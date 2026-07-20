@@ -394,6 +394,47 @@ label:first-child { margin-top: 0; }
 .vendor-count { font-size: 12px; color: var(--text3); }
 .vendor-amt { font-weight: 700; font-size: 14px; }
 
+/* dashboard: draggable/collapsible widgets */
+.dash-widget-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 20px 0 10px;
+}
+.dash-widget-head h2 { margin: 0; flex: 1; }
+.drag-handle, .widget-toggle {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 7px;
+  color: var(--text3);
+  font-size: 13px;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+}
+.drag-handle { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.drag-handle:active { cursor: grabbing; }
+.dash-widget.dragging { opacity: .5; }
+
+/* budget total row */
+.budget-total-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding-top: 14px;
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+}
+.budget-total-row .lbl { color: var(--text2); font-weight: 600; }
+.budget-total-row .val { font-weight: 700; font-size: 16px; }
+.budget-income-compare { font-size: 12.5px; color: var(--text2); margin-top: 6px; }
+
 /* transactions: filter bar */
 .filter-bar {
   display: flex;
@@ -412,4 +453,49 @@ label:first-child { margin-top: 0; }
   font-weight: 600;
   cursor: pointer;
   padding: 2px 0;
+}
+
+/* desktop: sidebar nav instead of bottom tab bar, wider readable column instead of a lonely mobile-width strip.
+   Placed last so it wins the cascade over the unconditional rules above at matching widths. */
+@media (min-width: 860px) {
+  #app {
+    max-width: 1080px;
+    flex-direction: row;
+    min-height: 100vh;
+  }
+  .screen {
+    padding: 32px 40px 40px;
+    max-width: 640px;
+    margin: 0 auto;
+  }
+  .tabbar {
+    order: -1;
+    position: sticky;
+    top: 0;
+    bottom: auto;
+    left: auto;
+    right: auto;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    width: 220px;
+    height: 100vh;
+    height: 100dvh;
+    flex-shrink: 0;
+    padding: 24px 12px;
+    border-top: none;
+    border-right: 1px solid var(--border);
+    gap: 4px;
+  }
+  .tab {
+    flex: 0 0 auto;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 14px;
+  }
+  .tab:hover { background: var(--accent-weak); }
+  .center-screen { max-width: 420px; margin: 0 auto; }
 }

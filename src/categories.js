@@ -32,3 +32,21 @@ export function categoryBudgetType(name) {
   const found = EXPENSE_CATEGORIES.find(c => c.name === name)
   return found ? found.type : 'Discretionary'
 }
+
+// One-time seed pulled from the "SUB-BUDGET LIMITS" table in Income-Expense.xlsx
+// (Monthly Tracker sheet), as of Jul 2026. Categories not listed there (Health,
+// Bank/Finance, Education, Travel) are left with no suggested limit.
+export const SUGGESTED_BUDGET_LIMITS = {
+  Rent: 8000,
+  Utilities: 3065, // Common Fee 2,500 + Electricity 450 + Water 115
+  Insurance: 4166.67, // 20/20 investment installment
+  Internet: 997, // Truemove 462 + AIS 535
+  Subscriptions: 371.58, // Hevy Pro 61.58 + Claude Pro 310
+  Groceries: 6000,
+  Food: 1000, // "Meals / Food" line
+  Transport: 2000, // Gas
+  Investment: 2100, // SCBS&P500e 1,680 + GLD 420
+  Shopping: 800, // Shopee
+  Social: 400, // "Social / Date"
+  Other: 800, // "Other Wants" catch-all (games/clothes/travel/misc in the sheet)
+}

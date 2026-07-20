@@ -1,9 +1,11 @@
 import { formatMoney, rangeLabel, rangeWindow, escapeHtml } from '../helpers.js'
 import { BUDGET_TYPE_ORDER } from '../categories.js'
+import { getOrder, setOrder, getCollapsed, toggleCollapsed } from '../dashboardLayout.js'
 
 const RANGES = [1, 3, 6, 12]
 
-export function renderDashboard(container, { txns, budgets, year, month, range, onMonthChange, onRangeChange }) {
+export function renderDashboard(container, opts) {
+  const { txns, budgets, year, month, range, onMonthChange, onRangeChange } = opts
   const { from, to } = rangeWindow(year, month, range)
   const rangeTxns = txns.filter(t => t.date >= from && t.date <= to)
 
@@ -28,6 +30,55 @@ export function renderDashboard(container, { txns, budgets, year, month, range, 
   const activeBudgets = budgets
     .filter(b => b.monthly_limit > 0)
     .sort((a, b) => BUDGET_TYPE_ORDER.indexOf(a.budget_type) - BUDGET_TYPE_ORDER.indexOf(b.budget_type))
+
+  const widgets = {
+    budget: {
+      title: `Budget vs Actual${range > 1 ? ` (×${range} mo.)` : ''}`,
+      body: activeBudgets.length === 0 ? '<div class="empty-state">No budgets set yet. Add limits in Settings.</div>' : activeBudgets.map(b => {
+        const limit = b.monthly_limit * range
+        const spent = spentByCategory[b.category] || 0
+        const pct = Math.min(100, (spent / limit) * 100)
+        const cls = spent > limit ? 'over' : (pct >= 80 ? 'warn' : '')
+        return `
+          <div class="budget-row">
+            <div class="budget-row-top">
+              <span class="cat">${b.category}</span>
+              <span class="nums">${formatMoney(spent)} / ${formatMoney(limit)}</span>
+            </div>
+            <div class="budget-bar-track"><div class="budget-bar-fill ${cls}" style="width:${pct}%"></div></div>
+          </div>
+        `
+      }).join(''),
+    },
+    category: {
+      title: 'By Category',
+      body: Object.keys(spentByCategory).length === 0 ? '<div class="empty-state">No expenses in this period.</div>' :
+        Object.entries(spentByCategory).sort((a, b) => b[1] - a[1]).map(([cat, amt]) => `
+          <div class="budget-row">
+            <div class="budget-row-top">
+              <span class="cat">${cat}</span>
+              <span class="nums">${formatMoney(amt)}</span>
+            </div>
+            <div class="budget-bar-track"><div class="budget-bar-fill" style="width:${expense ? (amt / expense) * 100 : 0}%"></div></div>
+          </div>
+        `).join(''),
+    },
+    vendors: {
+      title: 'Top Vendors',
+      body: topVendors.length === 0 ? '<div class="empty-state">No vendor/note data in this period.</div>' :
+        topVendors.map(([name, d], i) => `
+          <div class="vendor-row">
+            <div class="vendor-rank">${i + 1}</div>
+            <div class="vendor-name">${escapeHtml(name)}</div>
+            <div class="vendor-count">×${d.count}</div>
+            <div class="vendor-amt">${formatMoney(d.amount)}</div>
+          </div>
+        `).join(''),
+    },
+  }
+
+  const order = getOrder()
+  const collapsed = getCollapsed()
 
   container.innerHTML = `
     <div class="top-bar"><h1>Dashboard</h1></div>
@@ -57,50 +108,8 @@ export function renderDashboard(container, { txns, budgets, year, month, range, 
       </div>
     </div>
 
-    <h2>Budget vs Actual${range > 1 ? ` (×${range} mo.)` : ''}</h2>
-    <div class="card">
-      ${activeBudgets.length === 0 ? '<div class="empty-state">No budgets set yet. Add limits in Settings.</div>' : activeBudgets.map(b => {
-        const limit = b.monthly_limit * range
-        const spent = spentByCategory[b.category] || 0
-        const pct = Math.min(100, (spent / limit) * 100)
-        const cls = spent > limit ? 'over' : (pct >= 80 ? 'warn' : '')
-        return `
-          <div class="budget-row">
-            <div class="budget-row-top">
-              <span class="cat">${b.category}</span>
-              <span class="nums">${formatMoney(spent)} / ${formatMoney(limit)}</span>
-            </div>
-            <div class="budget-bar-track"><div class="budget-bar-fill ${cls}" style="width:${pct}%"></div></div>
-          </div>
-        `
-      }).join('')}
-    </div>
-
-    <h2>By Category</h2>
-    <div class="card">
-      ${Object.keys(spentByCategory).length === 0 ? '<div class="empty-state">No expenses in this period.</div>' :
-        Object.entries(spentByCategory).sort((a, b) => b[1] - a[1]).map(([cat, amt]) => `
-          <div class="budget-row">
-            <div class="budget-row-top">
-              <span class="cat">${cat}</span>
-              <span class="nums">${formatMoney(amt)}</span>
-            </div>
-            <div class="budget-bar-track"><div class="budget-bar-fill" style="width:${expense ? (amt / expense) * 100 : 0}%"></div></div>
-          </div>
-        `).join('')}
-    </div>
-
-    <h2>Top Vendors</h2>
-    <div class="card">
-      ${topVendors.length === 0 ? '<div class="empty-state">No vendor/note data in this period.</div>' :
-        topVendors.map(([name, d], i) => `
-          <div class="vendor-row">
-            <div class="vendor-rank">${i + 1}</div>
-            <div class="vendor-name">${escapeHtml(name)}</div>
-            <div class="vendor-count">×${d.count}</div>
-            <div class="vendor-amt">${formatMoney(d.amount)}</div>
-          </div>
-        `).join('')}
+    <div id="dashWidgets">
+      ${order.map(id => widgetRowHtml(id, widgets[id], collapsed.has(id))).join('')}
     </div>
   `
 
@@ -117,4 +126,59 @@ export function renderDashboard(container, { txns, budgets, year, month, range, 
     const y = month === 11 ? year + 1 : year
     onMonthChange(y, m)
   }
+
+  const widgetsEl = container.querySelector('#dashWidgets')
+  widgetsEl.querySelectorAll('.widget-toggle').forEach(btn => {
+    btn.onclick = () => { toggleCollapsed(btn.dataset.widget); renderDashboard(container, opts) }
+  })
+  setupDragReorder(widgetsEl)
+}
+
+function widgetRowHtml(id, def, isCollapsed) {
+  return `
+    <div class="dash-widget" data-widget="${id}">
+      <div class="dash-widget-head">
+        <button class="drag-handle" data-widget="${id}" aria-label="Drag to reorder">⠿</button>
+        <h2>${def.title}</h2>
+        <button class="widget-toggle" data-widget="${id}" aria-label="${isCollapsed ? 'Expand' : 'Collapse'} section">${isCollapsed ? '⌄' : '⌃'}</button>
+      </div>
+      ${isCollapsed ? '' : `<div class="card">${def.body}</div>`}
+    </div>
+  `
+}
+
+function setupDragReorder(widgetsEl) {
+  widgetsEl.querySelectorAll('.drag-handle').forEach(handle => {
+    handle.addEventListener('pointerdown', (e) => {
+      const dragging = handle.closest('.dash-widget')
+      if (!dragging) return
+      e.preventDefault()
+      dragging.classList.add('dragging')
+
+      const onMove = (ev) => {
+        const siblings = [...widgetsEl.querySelectorAll('.dash-widget')].filter(w => w !== dragging)
+        for (const sib of siblings) {
+          const rect = sib.getBoundingClientRect()
+          const mid = rect.top + rect.height / 2
+          const sibIsAfter = !!(dragging.compareDocumentPosition(sib) & Node.DOCUMENT_POSITION_FOLLOWING)
+          if (sibIsAfter && ev.clientY > mid) {
+            widgetsEl.insertBefore(dragging, sib.nextSibling)
+            break
+          } else if (!sibIsAfter && ev.clientY < mid) {
+            widgetsEl.insertBefore(dragging, sib)
+            break
+          }
+        }
+      }
+      const onUp = () => {
+        dragging.classList.remove('dragging')
+        document.removeEventListener('pointermove', onMove)
+        document.removeEventListener('pointerup', onUp)
+        const newOrder = [...widgetsEl.querySelectorAll('.dash-widget')].map(w => w.dataset.widget)
+        setOrder(newOrder)
+      }
+      document.addEventListener('pointermove', onMove)
+      document.addEventListener('pointerup', onUp)
+    })
+  })
 }

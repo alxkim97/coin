@@ -1,6 +1,6 @@
-import { EXPENSE_CATEGORIES, BUDGET_TYPE_ORDER } from '../categories.js'
+import { EXPENSE_CATEGORIES, BUDGET_TYPE_ORDER, SUGGESTED_BUDGET_LIMITS } from '../categories.js'
 import { upsertBudget, signOut } from '../supabase.js'
-import { toast, downloadFile, txnsToCsv, todayISO } from '../helpers.js'
+import { toast, downloadFile, txnsToCsv, todayISO, formatMoney } from '../helpers.js'
 import { ACCENTS, getMode, setMode, getAccent, setAccent } from '../theme.js'
 
 export function renderSettings(container, { budgets, txns, onBudgetsChanged, onSignedOut, session }) {
@@ -15,6 +15,17 @@ export function renderSettings(container, { budgets, txns, onBudgetsChanged, onS
 
   const mode = getMode()
   const accent = getAccent()
+
+  const incomeByMonth = {}
+  for (const t of txns) {
+    if (t.type !== 'income') continue
+    const key = t.date.slice(0, 7)
+    incomeByMonth[key] = (incomeByMonth[key] || 0) + Number(t.amount)
+  }
+  const incomeMonths = Object.keys(incomeByMonth)
+  const avgIncome = incomeMonths.length ? incomeMonths.reduce((s, m) => s + incomeByMonth[m], 0) / incomeMonths.length : null
+
+  const initialTotal = Object.values(budgetMap).reduce((s, v) => s + (Number(v) || 0), 0)
 
   container.innerHTML = `
     <div class="top-bar"><h1>Settings</h1></div>
@@ -52,7 +63,18 @@ export function renderSettings(container, { budgets, txns, onBudgetsChanged, onS
           `).join('')}
         </div>
       `).join('')}
-      <button class="btn" id="saveBudgets">Save Budgets</button>
+
+      <div class="budget-total-row">
+        <span class="lbl">Total budgeted</span>
+        <span class="val" id="budgetTotalVal">${formatMoney(initialTotal)}</span>
+      </div>
+      ${avgIncome !== null ? `<div class="budget-income-compare" id="budgetIncomeCompare"></div>` : `<div class="budget-income-compare">Log some income transactions to compare this against your average salary.</div>`}
+
+      <div style="display:flex;gap:10px;margin-top:14px">
+        <button class="btn" id="saveBudgets">Save Budgets</button>
+        <button class="btn secondary" id="loadSuggested">↺ Load from Spreadsheet</button>
+      </div>
+      <div style="font-size:12px;color:var(--text2);margin-top:10px">Fills the fields above from your Income-Expense.xlsx budget analysis (Jul 2026) — review before saving.</div>
     </div>
 
     <h2>Data</h2>
@@ -82,6 +104,31 @@ export function renderSettings(container, { budgets, txns, onBudgetsChanged, onS
   }
   container.querySelector('#exportJson').onclick = () => {
     downloadFile(`coin-transactions-${todayISO()}.json`, JSON.stringify(txns, null, 2), 'application/json')
+  }
+
+  function updateTotal() {
+    const total = [...container.querySelectorAll('.budgetInput')].reduce((s, inp) => s + (parseFloat(inp.value) || 0), 0)
+    container.querySelector('#budgetTotalVal').textContent = formatMoney(total)
+    const compareEl = container.querySelector('#budgetIncomeCompare')
+    if (compareEl && avgIncome) {
+      const pct = Math.round((total / avgIncome) * 100)
+      compareEl.textContent = `${pct}% of your avg income — ${formatMoney(avgIncome)}/mo over ${incomeMonths.length} logged month${incomeMonths.length === 1 ? '' : 's'}`
+      compareEl.style.color = total > avgIncome ? 'var(--red)' : 'var(--text2)'
+    }
+  }
+  container.querySelectorAll('.budgetInput').forEach(input => {
+    input.oninput = updateTotal
+  })
+  updateTotal()
+
+  container.querySelector('#loadSuggested').onclick = () => {
+    if (!confirm('Fill budget fields from your spreadsheet analysis? This overwrites what\'s currently typed here — nothing saves until you click Save Budgets.')) return
+    container.querySelectorAll('.budgetInput').forEach(input => {
+      const suggested = SUGGESTED_BUDGET_LIMITS[input.dataset.cat]
+      if (suggested !== undefined) input.value = suggested
+    })
+    updateTotal()
+    toast('Loaded — review and Save Budgets when ready')
   }
 
   container.querySelector('#saveBudgets').onclick = async () => {
