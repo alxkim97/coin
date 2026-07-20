@@ -6,6 +6,9 @@ import { renderTransactions } from './views/transactions.js'
 import { renderDashboard } from './views/dashboard.js'
 import { renderSettings } from './views/settings.js'
 import { toast } from './helpers.js'
+import { applyTheme } from './theme.js'
+
+applyTheme()
 
 const app = document.getElementById('app')
 
@@ -17,6 +20,7 @@ const state = {
   budgets: [],
   year: now.getFullYear(),
   month: now.getMonth(),
+  range: 1,
   editingTxn: null,
   loading: true,
 }
@@ -36,6 +40,11 @@ function setView(view, opts = {}) {
 function setMonth(year, month) {
   state.year = year
   state.month = month
+  render()
+}
+
+function setRange(range) {
+  state.range = range
   render()
 }
 
@@ -78,7 +87,9 @@ function render() {
       budgets: state.budgets,
       year: state.year,
       month: state.month,
+      range: state.range,
       onMonthChange: setMonth,
+      onRangeChange: setRange,
     })
   } else if (state.view === 'transactions') {
     renderTransactions(screen, {
@@ -96,6 +107,7 @@ function render() {
   } else if (state.view === 'settings') {
     renderSettings(screen, {
       budgets: state.budgets,
+      txns: state.txns,
       session: state.session,
       onBudgetsChanged: async () => { state.budgets = await fetchBudgets(); render() },
       onSignedOut: () => { state.session = null; render() },

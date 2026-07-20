@@ -1,32 +1,42 @@
-import { formatMoney, monthLabel, monthRange } from '../helpers.js'
+import { formatMoney, rangeLabel, rangeWindow, escapeHtml } from '../helpers.js'
 import { BUDGET_TYPE_ORDER } from '../categories.js'
 
-export function renderDashboard(container, { txns, budgets, year, month, onMonthChange }) {
-  const { from, to } = monthRange(year, month)
-  const monthTxns = txns.filter(t => t.date >= from && t.date <= to)
+const RANGES = [1, 3, 6, 12]
 
-  const income = monthTxns.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0)
-  const expense = monthTxns.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0)
+export function renderDashboard(container, { txns, budgets, year, month, range, onMonthChange, onRangeChange }) {
+  const { from, to } = rangeWindow(year, month, range)
+  const rangeTxns = txns.filter(t => t.date >= from && t.date <= to)
+
+  const income = rangeTxns.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0)
+  const expense = rangeTxns.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0)
   const net = income - expense
 
   const spentByCategory = {}
-  for (const t of monthTxns) {
+  const spentByVendor = {}
+  for (const t of rangeTxns) {
     if (t.type !== 'expense') continue
     spentByCategory[t.category] = (spentByCategory[t.category] || 0) + Number(t.amount)
+    const vendor = t.subcategory || null
+    if (!vendor) continue
+    if (!spentByVendor[vendor]) spentByVendor[vendor] = { amount: 0, count: 0 }
+    spentByVendor[vendor].amount += Number(t.amount)
+    spentByVendor[vendor].count += 1
   }
+  const topVendors = Object.entries(spentByVendor).sort((a, b) => b[1].amount - a[1].amount).slice(0, 5)
 
-  const budgetMap = {}
-  for (const b of budgets) budgetMap[b.category] = b
-
+  // budget limits are monthly — scale to the window so "Budget vs Actual" stays meaningful across ranges
   const activeBudgets = budgets
     .filter(b => b.monthly_limit > 0)
     .sort((a, b) => BUDGET_TYPE_ORDER.indexOf(a.budget_type) - BUDGET_TYPE_ORDER.indexOf(b.budget_type))
 
   container.innerHTML = `
     <div class="top-bar"><h1>Dashboard</h1></div>
+    <div class="range-toggle" id="rangeToggle">
+      ${RANGES.map(r => `<button data-range="${r}" class="${r === range ? 'active' : ''}">${r === 1 ? '1M' : r + 'M'}</button>`).join('')}
+    </div>
     <div class="month-nav">
       <button id="prevMonth">‹</button>
-      <div class="month-label">${monthLabel(year, month)}</div>
+      <div class="month-label">${rangeLabel(year, month, range)}</div>
       <button id="nextMonth">›</button>
     </div>
 
@@ -47,17 +57,18 @@ export function renderDashboard(container, { txns, budgets, year, month, onMonth
       </div>
     </div>
 
-    <h2>Budget vs Actual</h2>
+    <h2>Budget vs Actual${range > 1 ? ` (×${range} mo.)` : ''}</h2>
     <div class="card">
       ${activeBudgets.length === 0 ? '<div class="empty-state">No budgets set yet. Add limits in Settings.</div>' : activeBudgets.map(b => {
+        const limit = b.monthly_limit * range
         const spent = spentByCategory[b.category] || 0
-        const pct = Math.min(100, (spent / b.monthly_limit) * 100)
-        const cls = spent > b.monthly_limit ? 'over' : (pct >= 80 ? 'warn' : '')
+        const pct = Math.min(100, (spent / limit) * 100)
+        const cls = spent > limit ? 'over' : (pct >= 80 ? 'warn' : '')
         return `
           <div class="budget-row">
             <div class="budget-row-top">
               <span class="cat">${b.category}</span>
-              <span class="nums">${formatMoney(spent)} / ${formatMoney(b.monthly_limit)}</span>
+              <span class="nums">${formatMoney(spent)} / ${formatMoney(limit)}</span>
             </div>
             <div class="budget-bar-track"><div class="budget-bar-fill ${cls}" style="width:${pct}%"></div></div>
           </div>
@@ -67,7 +78,7 @@ export function renderDashboard(container, { txns, budgets, year, month, onMonth
 
     <h2>By Category</h2>
     <div class="card">
-      ${Object.keys(spentByCategory).length === 0 ? '<div class="empty-state">No expenses yet this month.</div>' :
+      ${Object.keys(spentByCategory).length === 0 ? '<div class="empty-state">No expenses in this period.</div>' :
         Object.entries(spentByCategory).sort((a, b) => b[1] - a[1]).map(([cat, amt]) => `
           <div class="budget-row">
             <div class="budget-row-top">
@@ -78,8 +89,24 @@ export function renderDashboard(container, { txns, budgets, year, month, onMonth
           </div>
         `).join('')}
     </div>
+
+    <h2>Top Vendors</h2>
+    <div class="card">
+      ${topVendors.length === 0 ? '<div class="empty-state">No vendor/note data in this period.</div>' :
+        topVendors.map(([name, d], i) => `
+          <div class="vendor-row">
+            <div class="vendor-rank">${i + 1}</div>
+            <div class="vendor-name">${escapeHtml(name)}</div>
+            <div class="vendor-count">×${d.count}</div>
+            <div class="vendor-amt">${formatMoney(d.amount)}</div>
+          </div>
+        `).join('')}
+    </div>
   `
 
+  container.querySelector('#rangeToggle').querySelectorAll('button').forEach(btn => {
+    btn.onclick = () => onRangeChange(Number(btn.dataset.range))
+  })
   container.querySelector('#prevMonth').onclick = () => {
     const m = month === 0 ? 11 : month - 1
     const y = month === 0 ? year - 1 : year

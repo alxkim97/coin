@@ -18,6 +18,19 @@ export function monthRange(year, month) {
   return { from, to }
 }
 
+export function rangeWindow(year, month, span) {
+  const from = new Date(year, month - (span - 1), 1).toISOString().slice(0, 10)
+  const to = new Date(year, month + 1, 0).toISOString().slice(0, 10)
+  return { from, to }
+}
+
+export function rangeLabel(year, month, span) {
+  if (span === 1) return monthLabel(year, month)
+  const start = new Date(year, month - (span - 1), 1)
+  const startLabel = start.toLocaleDateString('en-US', { month: 'short', year: start.getFullYear() === year ? undefined : 'numeric' })
+  return `${startLabel} – ${monthLabel(year, month)}`
+}
+
 export function dateHeaderLabel(dateStr) {
   const d = new Date(dateStr + 'T00:00:00')
   const today = new Date()
@@ -45,4 +58,25 @@ export function toast(msg) {
 
 export function escapeHtml(str) {
   return String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+}
+
+export function downloadFile(filename, content, mime) {
+  const blob = new Blob([content], { type: mime })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function csvField(v) {
+  const s = String(v ?? '')
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
+}
+
+export function txnsToCsv(txns) {
+  const header = ['date', 'type', 'category', 'subcategory', 'amount', 'notes']
+  const rows = txns.map(t => [t.date, t.type, t.category, t.subcategory || '', t.amount, t.notes || ''].map(csvField).join(','))
+  return [header.join(','), ...rows].join('\n')
 }

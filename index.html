@@ -10,6 +10,14 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Coin" />
     <title>Coin</title>
+    <script>
+      (function () {
+        var mode = localStorage.getItem('coin_theme_mode')
+        var accent = localStorage.getItem('coin_theme_accent')
+        if (mode && mode !== 'system') document.documentElement.setAttribute('data-theme', mode)
+        if (accent && accent !== 'blue') document.documentElement.setAttribute('data-accent', accent)
+      })()
+    </script>
   </head>
   <body>
     <div id="app"></div>
