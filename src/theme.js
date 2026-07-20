@@ -8,6 +8,7 @@ export const ACCENTS = [
   { id: 'amber', label: 'Amber', swatch: '#b45309' },
   { id: 'rose', label: 'Rose', swatch: '#be185d' },
   { id: 'teal', label: 'Teal', swatch: '#0f766e' },
+  { id: 'indigo', label: 'Indigo', swatch: '#4f52e8' },
 ]
 
 export function getMode() {

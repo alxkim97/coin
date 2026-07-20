@@ -62,6 +62,11 @@
 :root[data-theme="dark"][data-accent="teal"] { --accent: #2dd4bf; --accent-weak: #0f3d3a; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"])[data-accent="teal"] { --accent: #2dd4bf; --accent-weak: #0f3d3a; } }
 
+/* Indigo — deep indigo/purple, borrowed from NutriLog's dark theme */
+:root[data-accent="indigo"] { --accent: #4f52e8; --accent-weak: #e5e4fc; }
+:root[data-theme="dark"][data-accent="indigo"] { --accent: #8b82ff; --accent-weak: #2d2860; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"])[data-accent="indigo"] { --accent: #8b82ff; --accent-weak: #2d2860; } }
+
 * { box-sizing: border-box; }
 
 html, body {
@@ -318,6 +323,28 @@ label:first-child { margin-top: 0; }
   padding: 24px;
 }
 
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, .5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 200;
+}
+.confirm-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  max-width: 320px;
+  width: 100%;
+}
+.confirm-box p { margin: 0 0 16px; font-size: 15px; font-weight: 600; }
+.confirm-actions { display: flex; gap: 10px; }
+.confirm-actions .btn { width: auto; flex: 1; }
+
 .link-btn {
   background: none;
   border: none;
@@ -459,15 +486,20 @@ label:first-child { margin-top: 0; }
    Placed last so it wins the cascade over the unconditional rules above at matching widths. */
 @media (min-width: 860px) {
   #app {
-    max-width: 1080px;
+    max-width: none;
     flex-direction: row;
     min-height: 100vh;
   }
   .screen {
-    padding: 32px 40px 40px;
-    max-width: 640px;
-    margin: 0 auto;
+    padding: 32px 48px 40px;
   }
+  #dashWidgets {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 0 24px;
+    align-items: start;
+  }
+  .dash-widget { break-inside: avoid; }
   .tabbar {
     order: -1;
     position: sticky;

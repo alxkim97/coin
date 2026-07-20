@@ -56,6 +56,30 @@ export function toast(msg) {
   toastTimer = setTimeout(() => el.classList.remove('show'), 2000)
 }
 
+// Custom in-DOM confirm — some mobile browsers (e.g. Brave on Android, when the
+// app is running as an installed PWA) don't wire up window.confirm() to a real
+// dialog, so it returns immediately without giving the user a chance to answer.
+export function confirmDialog(message) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div')
+    overlay.className = 'confirm-overlay'
+    overlay.innerHTML = `
+      <div class="confirm-box">
+        <p>${escapeHtml(message)}</p>
+        <div class="confirm-actions">
+          <button class="btn secondary" id="confirmNo">Cancel</button>
+          <button class="btn danger" id="confirmYes">Delete</button>
+        </div>
+      </div>
+    `
+    document.getElementById('app').appendChild(overlay)
+    const close = (result) => { overlay.remove(); resolve(result) }
+    overlay.querySelector('#confirmNo').onclick = () => close(false)
+    overlay.querySelector('#confirmYes').onclick = () => close(true)
+    overlay.onclick = (e) => { if (e.target === overlay) close(false) }
+  })
+}
+
 export function escapeHtml(str) {
   return String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 }

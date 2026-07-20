@@ -1,6 +1,6 @@
 import { EXPENSE_CATEGORIES, BUDGET_TYPE_ORDER, SUGGESTED_BUDGET_LIMITS } from '../categories.js'
 import { upsertBudget, signOut } from '../supabase.js'
-import { toast, downloadFile, txnsToCsv, todayISO, formatMoney } from '../helpers.js'
+import { toast, downloadFile, txnsToCsv, todayISO, formatMoney, confirmDialog } from '../helpers.js'
 import { ACCENTS, getMode, setMode, getAccent, setAccent } from '../theme.js'
 
 export function renderSettings(container, { budgets, txns, onBudgetsChanged, onSignedOut, session }) {
@@ -121,8 +121,9 @@ export function renderSettings(container, { budgets, txns, onBudgetsChanged, onS
   })
   updateTotal()
 
-  container.querySelector('#loadSuggested').onclick = () => {
-    if (!confirm('Fill budget fields from your spreadsheet analysis? This overwrites what\'s currently typed here — nothing saves until you click Save Budgets.')) return
+  container.querySelector('#loadSuggested').onclick = async () => {
+    const ok = await confirmDialog('Fill budget fields from your spreadsheet analysis? This overwrites what\'s currently typed here — nothing saves until you click Save Budgets.')
+    if (!ok) return
     container.querySelectorAll('.budgetInput').forEach(input => {
       const suggested = SUGGESTED_BUDGET_LIMITS[input.dataset.cat]
       if (suggested !== undefined) input.value = suggested
@@ -155,7 +156,8 @@ export function renderSettings(container, { budgets, txns, onBudgetsChanged, onS
   }
 
   container.querySelector('#signOutBtn').onclick = async () => {
-    if (!confirm('Sign out?')) return
+    const ok = await confirmDialog('Sign out?')
+    if (!ok) return
     await signOut()
     onSignedOut()
   }

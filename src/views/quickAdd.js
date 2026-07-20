@@ -1,6 +1,6 @@
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, categoryBudgetType } from '../categories.js'
 import { addTransaction, updateTransaction, deleteTransaction } from '../supabase.js'
-import { todayISO, toast } from '../helpers.js'
+import { todayISO, toast, confirmDialog } from '../helpers.js'
 
 export function renderQuickAdd(container, { onSaved, editingTxn }) {
   const isEdit = !!editingTxn
@@ -72,7 +72,8 @@ export function renderQuickAdd(container, { onSaved, editingTxn }) {
     container.querySelector('#saveBtn').onclick = save
     container.querySelector('#cancelBtn')?.addEventListener('click', () => onSaved())
     container.querySelector('#deleteBtn')?.addEventListener('click', async () => {
-      if (!confirm('Delete this transaction?')) return
+      const ok = await confirmDialog('Delete this transaction?')
+      if (!ok) return
       try {
         await deleteTransaction(editingTxn.id)
         toast('Deleted')
