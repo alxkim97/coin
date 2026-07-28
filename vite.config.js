@@ -2,6 +2,10 @@ import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
+  // Relative asset paths — Vercel resolves them fine from '/', and it's what
+  // lets the Electron build load dist/index.html straight off disk (file://
+  // can't resolve root-absolute '/assets/...' paths).
+  base: './',
   server: {
     host: true, // expose on LAN so it's reachable from your phone during dev
   },

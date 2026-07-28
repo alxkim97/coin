@@ -1,19 +1,63 @@
 {
   "name": "coin",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "main.cjs",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "migrate": "node scripts/migrate.js"
+    "migrate": "node scripts/migrate.js",
+    "electron": "electron .",
+    "electron:dev": "electron . --dev",
+    "electron:build": "vite build && electron-builder --win --x64"
   },
   "devDependencies": {
+    "electron": "^31.7.7",
+    "electron-builder": "^24.13.3",
     "vite": "^8.1.1"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.7",
+    "electron-updater": "^6.8.9",
     "vite-plugin-pwa": "^1.3.0"
+  },
+  "build": {
+    "appId": "com.alexkim.coin",
+    "productName": "Coin",
+    "copyright": "Copyright © 2026 Alex",
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "dist/**/*"
+    ],
+    "directories": {
+      "output": "release",
+      "buildResources": "assets"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Coin"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "alxkim97",
+      "repo": "coin"
+    }
   }
 }

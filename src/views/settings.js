@@ -86,6 +86,14 @@ export function renderSettings(container, { budgets, txns, onBudgetsChanged, onS
       </div>
     </div>
 
+    ${window.electronAPI?.isElectron ? `
+      <h2>Desktop App</h2>
+      <div class="card" style="margin-bottom:16px">
+        <div style="font-size:13px;color:var(--text2);margin-bottom:12px">Version <span id="appVersion">…</span> — updates download in the background and prompt you to restart when ready.</div>
+        <button class="btn secondary" id="checkUpdatesBtn">Check for Updates</button>
+      </div>
+    ` : ''}
+
     <h2>Account</h2>
     <div class="card">
       <button class="btn danger" id="signOutBtn">Sign Out</button>
@@ -160,5 +168,13 @@ export function renderSettings(container, { budgets, txns, onBudgetsChanged, onS
     if (!ok) return
     await signOut()
     onSignedOut()
+  }
+
+  if (window.electronAPI?.isElectron) {
+    window.electronAPI.getVersion().then(v => {
+      const el = container.querySelector('#appVersion')
+      if (el) el.textContent = v
+    })
+    container.querySelector('#checkUpdatesBtn').onclick = () => window.electronAPI.checkForUpdates()
   }
 }
