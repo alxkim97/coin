@@ -9,8 +9,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "migrate": "node scripts/migrate.js",
-    "electron": "electron .",
-    "electron:dev": "electron . --dev",
+    "electron": "electron main.cjs",
+    "electron:dev": "electron main.cjs --dev",
     "electron:build": "vite build && electron-builder --win --x64"
   },
   "devDependencies": {

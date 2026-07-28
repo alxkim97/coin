@@ -31,6 +31,20 @@ export function rangeLabel(year, month, span) {
   return `${startLabel} – ${monthLabel(year, month)}`
 }
 
+// Salary paid at end of month (day >= 25) is money meant to fund *next*
+// month's spending, not the month it happened to land in. Counting it toward
+// the calendar month it was deposited makes that next month look like pure
+// expense with no income until its own end-of-month payday — same fix as
+// Ledger's budget-mode shift. Only affects dashboard totals/budgets; the
+// Transactions list still shows the real deposit date.
+const SALARY_SHIFT_DAY = 25
+export function effectiveDate(t) {
+  if (t.type !== 'income' || t.category !== 'Salary') return t.date
+  const d = new Date(t.date + 'T00:00:00')
+  if (d.getDate() < SALARY_SHIFT_DAY) return t.date
+  return new Date(d.getFullYear(), d.getMonth() + 1, 1).toISOString().slice(0, 10)
+}
+
 export function dateHeaderLabel(dateStr) {
   const d = new Date(dateStr + 'T00:00:00')
   const today = new Date()

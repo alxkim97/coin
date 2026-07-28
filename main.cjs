@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, Tray, Menu } = require('electron')
 const path = require('path')
 const { autoUpdater } = require('electron-updater')
 
@@ -14,6 +14,8 @@ if (!gotSingleInstanceLock) {
 
 const isDev = process.argv.includes('--dev')
 let mainWindow = null
+let tray = null
+let isQuitting = false
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -44,6 +46,34 @@ function createWindow() {
   // Show once painted to avoid a white flash on launch.
   mainWindow.once('ready-to-show', () => mainWindow.show())
   mainWindow.on('closed', () => { mainWindow = null })
+
+  // The X button minimizes to tray instead of quitting, so Coin keeps
+  // running in the background — same as Pinboard — and stays reachable for
+  // periodic update checks without needing to be reopened by hand.
+  mainWindow.on('close', (event) => {
+    if (isQuitting) return
+    event.preventDefault()
+    mainWindow.hide()
+  })
+}
+
+function rebuildTrayMenu() {
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Open Coin', click: () => { mainWindow.show(); mainWindow.focus() } },
+    { type: 'separator' },
+    updateDownloaded
+      ? { label: 'Restart to Install Update', click: () => { isQuitting = true; autoUpdater.quitAndInstall() } }
+      : { label: 'Check for Updates', click: () => checkForUpdates(true) },
+    { type: 'separator' },
+    { label: 'Quit Coin', click: () => { isQuitting = true; app.quit() } },
+  ]))
+}
+
+function createTray() {
+  tray = new Tray(path.join(__dirname, 'assets', 'icon.ico'))
+  tray.setToolTip('Coin')
+  rebuildTrayMenu()
+  tray.on('click', () => { mainWindow.show(); mainWindow.focus() })
 }
 
 // Auto-update via electron-updater + GitHub Releases. A manual check (from
@@ -55,6 +85,7 @@ autoUpdater.autoInstallOnAppQuit = true
 
 autoUpdater.on('update-downloaded', (info) => {
   updateDownloaded = true
+  if (tray) rebuildTrayMenu()
   dialog.showMessageBox({
     type: 'info',
     title: 'Coin update ready',
@@ -64,7 +95,7 @@ autoUpdater.on('update-downloaded', (info) => {
     defaultId: 0,
     cancelId: 1,
   }).then(({ response }) => {
-    if (response === 0) autoUpdater.quitAndInstall()
+    if (response === 0) { isQuitting = true; autoUpdater.quitAndInstall() }
   })
 })
 
@@ -119,6 +150,7 @@ if (gotSingleInstanceLock) {
 
   app.whenReady().then(() => {
     createWindow()
+    createTray()
 
     if (!isDev) {
       // Delay the first check past startup so it doesn't compete with the
@@ -133,6 +165,10 @@ if (gotSingleInstanceLock) {
     })
   })
 }
+
+app.on('before-quit', () => {
+  isQuitting = true
+})
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

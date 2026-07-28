@@ -1,4 +1,4 @@
-import { formatMoney, rangeLabel, rangeWindow, escapeHtml } from '../helpers.js'
+import { formatMoney, rangeLabel, rangeWindow, escapeHtml, effectiveDate } from '../helpers.js'
 import { BUDGET_TYPE_ORDER } from '../categories.js'
 import { getOrder, setOrder, getCollapsed, toggleCollapsed } from '../dashboardLayout.js'
 
@@ -7,7 +7,7 @@ const RANGES = [1, 3, 6, 12]
 export function renderDashboard(container, opts) {
   const { txns, budgets, year, month, range, onMonthChange, onRangeChange } = opts
   const { from, to } = rangeWindow(year, month, range)
-  const rangeTxns = txns.filter(t => t.date >= from && t.date <= to)
+  const rangeTxns = txns.filter(t => { const d = effectiveDate(t); return d >= from && d <= to })
 
   const income = rangeTxns.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0)
   const expense = rangeTxns.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0)
