@@ -1,6 +1,6 @@
 {
   "name": "coin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "main": "main.cjs",
@@ -30,7 +30,8 @@
     "files": [
       "main.cjs",
       "preload.cjs",
-      "dist/**/*"
+      "dist/**/*",
+      "assets/**/*"
     ],
     "directories": {
       "output": "release",

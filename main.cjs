@@ -150,7 +150,13 @@ if (gotSingleInstanceLock) {
 
   app.whenReady().then(() => {
     createWindow()
-    createTray()
+    try {
+      createTray()
+    } catch (err) {
+      // A broken tray icon shouldn't take down the update timers below —
+      // it did exactly that once already when the icon wasn't packaged.
+      console.error('createTray failed:', err)
+    }
 
     if (!isDev) {
       // Delay the first check past startup so it doesn't compete with the
