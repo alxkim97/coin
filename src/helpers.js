@@ -8,6 +8,23 @@ export function todayISO() {
   return d.toISOString().slice(0, 10)
 }
 
+// Average monthly spend per expense category over the trailing N months —
+// replaces a one-time hardcoded snapshot with something that stays current
+// on its own as you keep logging.
+export function computeSuggestedLimits(txns, months = 3) {
+  const cutoff = new Date()
+  cutoff.setMonth(cutoff.getMonth() - months)
+  const cutoffStr = cutoff.toISOString().slice(0, 10)
+  const sums = {}
+  for (const t of txns) {
+    if (t.type !== 'expense' || t.date < cutoffStr) continue
+    sums[t.category] = (sums[t.category] || 0) + Number(t.amount)
+  }
+  const result = {}
+  for (const cat in sums) result[cat] = Math.round((sums[cat] / months) * 100) / 100
+  return result
+}
+
 export function monthLabel(year, month) {
   return new Date(year, month, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 }
@@ -45,6 +62,21 @@ export function effectiveDate(t) {
   return new Date(d.getFullYear(), d.getMonth() + 1, 1).toISOString().slice(0, 10)
 }
 
+const FREQUENCY_LABELS = { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly', quarterly: 'Quarterly', annually: 'Annually' }
+export function frequencyLabel(frequency) {
+  return FREQUENCY_LABELS[frequency] || frequency
+}
+
+export function advanceDate(dateStr, frequency) {
+  const d = new Date(dateStr + 'T00:00:00')
+  if (frequency === 'daily') d.setDate(d.getDate() + 1)
+  else if (frequency === 'weekly') d.setDate(d.getDate() + 7)
+  else if (frequency === 'quarterly') d.setMonth(d.getMonth() + 3)
+  else if (frequency === 'annually') d.setFullYear(d.getFullYear() + 1)
+  else d.setMonth(d.getMonth() + 1) // monthly, and the default for anything unrecognized
+  return d.toISOString().slice(0, 10)
+}
+
 export function dateHeaderLabel(dateStr) {
   const d = new Date(dateStr + 'T00:00:00')
   const today = new Date()
@@ -73,7 +105,7 @@ export function toast(msg) {
 // Custom in-DOM confirm — some mobile browsers (e.g. Brave on Android, when the
 // app is running as an installed PWA) don't wire up window.confirm() to a real
 // dialog, so it returns immediately without giving the user a chance to answer.
-export function confirmDialog(message) {
+export function confirmDialog(message, confirmLabel = 'Confirm', danger = false) {
   return new Promise(resolve => {
     const overlay = document.createElement('div')
     overlay.className = 'confirm-overlay'
@@ -82,7 +114,7 @@ export function confirmDialog(message) {
         <p>${escapeHtml(message)}</p>
         <div class="confirm-actions">
           <button class="btn secondary" id="confirmNo">Cancel</button>
-          <button class="btn danger" id="confirmYes">Delete</button>
+          <button class="btn ${danger ? 'danger' : ''}" id="confirmYes">${escapeHtml(confirmLabel)}</button>
         </div>
       </div>
     `
@@ -117,4 +149,23 @@ export function txnsToCsv(txns) {
   const header = ['date', 'type', 'category', 'subcategory', 'amount', 'notes']
   const rows = txns.map(t => [t.date, t.type, t.category, t.subcategory || '', t.amount, t.notes || ''].map(csvField).join(','))
   return [header.join(','), ...rows].join('\n')
+}
+
+const CACHE_KEY = 'coin_data_cache'
+
+export function cacheData(txns, budgets) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ txns, budgets }))
+  } catch {
+    // localStorage full or unavailable — offline fallback just won't have data, non-fatal
+  }
+}
+
+export function getCachedData() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(CACHE_KEY))
+    return raw && Array.isArray(raw.txns) ? raw : null
+  } catch {
+    return null
+  }
 }

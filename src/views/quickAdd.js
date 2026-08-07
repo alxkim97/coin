@@ -1,8 +1,28 @@
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, categoryBudgetType } from '../categories.js'
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, categoryBudgetType, CATEGORY_ICONS } from '../categories.js'
 import { addTransaction, updateTransaction, deleteTransaction } from '../supabase.js'
-import { todayISO, toast, confirmDialog } from '../helpers.js'
+import { todayISO, toast, confirmDialog, formatMoney, escapeHtml } from '../helpers.js'
 
-export function renderQuickAdd(container, { onSaved, editingTxn }) {
+// Builds a searchable "known items" list from vendor names you've actually used
+// before (transaction history) plus anything saved as a repeat purchase —
+// same idea as NutriLog's food database: type a few letters, tap a match,
+// category/vendor/amount all fill in at once.
+function buildItemIndex(txns, recurring) {
+  const map = new Map()
+  const sorted = [...(txns || [])].sort((a, b) => b.date.localeCompare(a.date))
+  for (const t of sorted) {
+    if (!t.subcategory) continue
+    const key = `${t.type}::${t.subcategory.toLowerCase()}`
+    if (!map.has(key)) map.set(key, { type: t.type, subcategory: t.subcategory, category: t.category, amount: t.amount })
+  }
+  for (const r of (recurring || [])) {
+    if (!r.subcategory) continue
+    const key = `${r.type}::${r.subcategory.toLowerCase()}`
+    if (!map.has(key)) map.set(key, { type: r.type, subcategory: r.subcategory, category: r.category, amount: r.amount })
+  }
+  return [...map.values()]
+}
+
+export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns }) {
   const isEdit = !!editingTxn
   let type = editingTxn?.type || 'expense'
   let category = editingTxn?.category || null
@@ -11,12 +31,19 @@ export function renderQuickAdd(container, { onSaved, editingTxn }) {
   let subcategory = editingTxn?.subcategory || ''
   let notes = editingTxn?.notes || ''
 
+  const itemIndex = buildItemIndex(txns, recurring)
+
   function cats() {
     return type === 'expense' ? EXPENSE_CATEGORIES.map(c => c.name) : INCOME_CATEGORIES
   }
 
+  function quickItems() {
+    return (recurring || []).filter(r => r.active && r.mode === 'quick' && r.type === type)
+  }
+
   function draw() {
     const categoryList = cats()
+    const quicks = isEdit ? [] : quickItems()
     container.innerHTML = `
       <div class="top-bar">
         <h1>${isEdit ? 'Edit Transaction' : 'Add Transaction'}</h1>
@@ -26,6 +53,18 @@ export function renderQuickAdd(container, { onSaved, editingTxn }) {
         <button data-type="expense" class="${type === 'expense' ? 'active expense' : ''}">Expense</button>
         <button data-type="income" class="${type === 'income' ? 'active income' : ''}">Income</button>
       </div>
+
+      ${quicks.length ? `
+        <label>Frequently Used</label>
+        <div class="quick-chip-row" id="quickChips">
+          ${quicks.map(r => `
+            <button type="button" class="quick-chip" data-id="${r.id}">
+              <span class="qc-name">${CATEGORY_ICONS[r.category] || '💵'} ${r.subcategory ? r.subcategory.replace(/"/g, '&quot;') : r.category}</span>
+              <span class="qc-amt">${formatMoney(r.amount)}</span>
+            </button>
+          `).join('')}
+        </div>
+      ` : ''}
 
       <div class="card" style="margin-top:16px">
         <input class="amount-input" id="amountInput" type="number" inputmode="decimal" placeholder="0" value="${amount}" />
@@ -37,7 +76,10 @@ export function renderQuickAdd(container, { onSaved, editingTxn }) {
       </div>
 
       <label>Vendor / Note</label>
-      <input id="subInput" type="text" placeholder="e.g. Makro, Salary, Grab" value="${subcategory.replace(/"/g, '&quot;')}" />
+      <div class="vendor-field">
+        <input id="subInput" type="text" placeholder="Type to search past vendors, e.g. GLD" value="${subcategory.replace(/"/g, '&quot;')}" autocomplete="off" />
+        <div class="vendor-suggestions" id="vendorSuggestions"></div>
+      </div>
 
       <label>Date</label>
       <input id="dateInput" type="date" value="${date}" />
@@ -59,6 +101,17 @@ export function renderQuickAdd(container, { onSaved, editingTxn }) {
         draw()
       }
     })
+    container.querySelectorAll('#quickChips .quick-chip').forEach(chip => {
+      chip.onclick = () => {
+        const r = quicks.find(q => q.id === chip.dataset.id)
+        if (!r) return
+        category = r.category
+        subcategory = r.subcategory || ''
+        amount = String(r.amount)
+        draw()
+        container.querySelector('#amountInput')?.focus()
+      }
+    })
     container.querySelectorAll('#catGrid .chip').forEach(chip => {
       chip.onclick = () => {
         category = chip.dataset.cat
@@ -66,13 +119,47 @@ export function renderQuickAdd(container, { onSaved, editingTxn }) {
       }
     })
     container.querySelector('#amountInput').oninput = e => { amount = e.target.value }
-    container.querySelector('#subInput').oninput = e => { subcategory = e.target.value }
+
+    const subInput = container.querySelector('#subInput')
+    const suggBox = container.querySelector('#vendorSuggestions')
+    function closeSuggestions() {
+      suggBox.innerHTML = ''
+      suggBox.classList.remove('open')
+    }
+    function openSuggestions() {
+      const q = subcategory.trim().toLowerCase()
+      if (!q) { closeSuggestions(); return }
+      const matches = itemIndex.filter(it => it.type === type && it.subcategory.toLowerCase().includes(q)).slice(0, 6)
+      if (!matches.length) { closeSuggestions(); return }
+      suggBox.classList.add('open')
+      suggBox.innerHTML = matches.map(it => `
+        <div class="vendor-suggestion" data-sub="${escapeHtml(it.subcategory)}" data-cat="${escapeHtml(it.category)}" data-amt="${it.amount}">
+          <span class="vsg-icon">${CATEGORY_ICONS[it.category] || '💵'}</span>
+          <span class="vsg-name">${escapeHtml(it.subcategory)}</span>
+          <span class="vsg-cat">${escapeHtml(it.category)}</span>
+        </div>
+      `).join('')
+      suggBox.querySelectorAll('.vendor-suggestion').forEach(row => {
+        row.onclick = () => {
+          subcategory = row.dataset.sub
+          category = row.dataset.cat
+          amount = row.dataset.amt
+          draw()
+          container.querySelector('#amountInput')?.focus()
+        }
+      })
+    }
+    subInput.oninput = e => { subcategory = e.target.value; openSuggestions() }
+    subInput.addEventListener('focus', openSuggestions)
+    // delay so a click on a suggestion still registers before the list disappears
+    subInput.addEventListener('blur', () => setTimeout(closeSuggestions, 150))
+
     container.querySelector('#dateInput').oninput = e => { date = e.target.value }
     container.querySelector('#notesInput').oninput = e => { notes = e.target.value }
     container.querySelector('#saveBtn').onclick = save
     container.querySelector('#cancelBtn')?.addEventListener('click', () => onSaved())
     container.querySelector('#deleteBtn')?.addEventListener('click', async () => {
-      const ok = await confirmDialog('Delete this transaction?')
+      const ok = await confirmDialog('Delete this transaction?', 'Delete', true)
       if (!ok) return
       try {
         await deleteTransaction(editingTxn.id)

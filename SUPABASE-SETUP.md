@@ -42,6 +42,28 @@ create table if not exists coin_budgets (
 alter table coin_budgets enable row level security;
 create policy "own rows" on coin_budgets for all
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- Repeat purchases: either an auto-posting schedule (mode='auto', posts a real
+-- row to coin_transactions on its own when its next_due date arrives) or a
+-- quick-pick shortcut (mode='quick', just prefills the Add form — nothing
+-- automatic). One table for both since they're the same shape of data.
+create table if not exists coin_recurring (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  type text not null check (type in ('income','expense')),
+  category text not null,
+  subcategory text,
+  amount numeric not null check (amount > 0),
+  notes text,
+  mode text not null check (mode in ('auto','quick')),
+  frequency text check (frequency in ('daily','weekly','monthly','quarterly','annually')),
+  next_due date,
+  active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+alter table coin_recurring enable row level security;
+create policy "own rows" on coin_recurring for all
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
 ```
 
 ## Usage
@@ -49,6 +71,10 @@ create policy "own rows" on coin_budgets for all
 1. Run `npm run dev` (or open the deployed URL) and sign in with your existing Ledger account.
 2. If it's a brand new Supabase account, "Create one" first — you'll get a confirmation email.
 3. Every add/edit/delete writes straight to `coin_transactions` — no manual sync step, no local file to export.
+
+## Adding repeat purchases (2026-08-07)
+
+If you set up Coin before this date, run the `coin_recurring` block above once in the SQL Editor — it's additive, won't touch existing data. Manage repeat purchases from Settings → Repeat Purchases.
 
 ## One-time data migration
 

@@ -30,6 +30,18 @@ export async function signOut() {
   await supa.auth.signOut()
 }
 
+export async function updateEmail(newEmail) {
+  const { data, error } = await supa.auth.updateUser({ email: newEmail })
+  if (error) throw error
+  return data
+}
+
+export async function updateDisplayName(name) {
+  const { data, error } = await supa.auth.updateUser({ data: { display_name: name } })
+  if (error) throw error
+  return data
+}
+
 /* ── Transactions ── */
 
 export async function fetchTransactions({ from, to } = {}) {
@@ -74,4 +86,29 @@ export async function upsertBudget(category, monthly_limit, budget_type) {
     .single()
   if (error) throw error
   return data
+}
+
+/* ── Repeat purchases ── */
+
+export async function fetchRecurring() {
+  const { data, error } = await supa.from('coin_recurring').select('*').order('created_at', { ascending: true })
+  if (error) throw error
+  return data
+}
+
+export async function addRecurring(item) {
+  const { data, error } = await supa.from('coin_recurring').insert(item).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function updateRecurring(id, patch) {
+  const { data, error } = await supa.from('coin_recurring').update(patch).eq('id', id).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteRecurring(id) {
+  const { error } = await supa.from('coin_recurring').delete().eq('id', id)
+  if (error) throw error
 }

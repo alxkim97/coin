@@ -1,11 +1,5 @@
 import { formatMoney, monthLabel, monthRange, dateHeaderLabel, escapeHtml } from '../helpers.js'
-
-const CATEGORY_ICONS = {
-  Rent: '🏠', Insurance: '🛡️', Internet: '📶', Subscriptions: '🔁', 'Bank/Finance': '🏦',
-  Food: '🍜', Groceries: '🛒', Transport: '🚗', Health: '💊', Utilities: '💡',
-  Investment: '📈', Shopping: '🛍️', Social: '🎉', Travel: '✈️', Education: '📚', Other: '📦',
-  Salary: '💰', Reimbursement: '↩️', Bonus: '🎁', Overtime: '⏱️', 'Investment Returns': '📊',
-}
+import { CATEGORY_ICONS } from '../categories.js'
 
 // persists across re-renders within the session (module-level, like the rest of the app's view state)
 let filters = { q: '', category: 'All', min: '', max: '' }
