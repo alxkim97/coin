@@ -64,6 +64,37 @@ create table if not exists coin_recurring (
 alter table coin_recurring enable row level security;
 create policy "own rows" on coin_recurring for all
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- Net worth check-ins: a periodic manual snapshot (cash + invested), not a
+-- per-asset ledger — logged like a check-in, charted over time in Analysis.
+create table if not exists coin_networth (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  date date not null,
+  cash numeric not null default 0,
+  invested numeric not null default 0,
+  notes text,
+  created_at timestamptz not null default now()
+);
+alter table coin_networth enable row level security;
+create policy "own rows" on coin_networth for all
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- Per-account breakdown for a check-in (e.g. "KBANK Savings", "GLD") — the
+-- checkin's cash/invested columns above stay as a computed rollup of these,
+-- so nothing that reads them (the Analysis chart, Projection) has to change.
+-- No user_id column here — RLS is scoped via the parent checkin row instead.
+create table if not exists coin_networth_items (
+  id uuid primary key default gen_random_uuid(),
+  checkin_id uuid not null references coin_networth(id) on delete cascade,
+  name text not null,
+  category text not null check (category in ('cash', 'invested')),
+  value numeric not null default 0
+);
+alter table coin_networth_items enable row level security;
+create policy "own rows via checkin" on coin_networth_items for all
+  using (exists (select 1 from coin_networth n where n.id = checkin_id and n.user_id = auth.uid()))
+  with check (exists (select 1 from coin_networth n where n.id = checkin_id and n.user_id = auth.uid()));
 ```
 
 ## Usage
@@ -75,6 +106,14 @@ create policy "own rows" on coin_recurring for all
 ## Adding repeat purchases (2026-08-07)
 
 If you set up Coin before this date, run the `coin_recurring` block above once in the SQL Editor — it's additive, won't touch existing data. Manage repeat purchases from Settings → Repeat Purchases.
+
+## Adding net worth check-ins (2026-08-10)
+
+Run the `coin_networth` block above once — additive, won't touch existing data. Manage check-ins from Settings → Net Worth; the trend shows up under Analysis once you've logged at least one.
+
+## Adding multi-asset net worth (2026-08-10)
+
+Run the `coin_networth_items` block above once — additive, won't touch existing data or the `coin_networth` table's own columns. A check-in now records a list of named accounts (e.g. "KBANK Savings", "GLD") instead of two lump sums; older check-ins made before this date have no items and keep showing their original cash/invested breakdown.
 
 ## One-time data migration
 

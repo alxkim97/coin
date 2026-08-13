@@ -2,7 +2,6 @@ export const EXPENSE_CATEGORIES = [
   { name: 'Rent', type: 'Fixed Essential' },
   { name: 'Insurance', type: 'Fixed Essential' },
   { name: 'Internet', type: 'Fixed Essential' },
-  { name: 'Subscriptions', type: 'Fixed Essential' },
   { name: 'Bank/Finance', type: 'Fixed Essential' },
   { name: 'Food', type: 'Variable Essential' },
   { name: 'Groceries', type: 'Variable Essential' },
@@ -29,7 +28,7 @@ export const INCOME_CATEGORIES = [
 export const BUDGET_TYPE_ORDER = ['Fixed Essential', 'Variable Essential', 'Investment', 'Discretionary']
 
 export const CATEGORY_ICONS = {
-  Rent: '🏠', Insurance: '🛡️', Internet: '📶', Subscriptions: '🔁', 'Bank/Finance': '🏦',
+  Rent: '🏠', Insurance: '🛡️', Internet: '📶', 'Bank/Finance': '🏦',
   Food: '🍜', Groceries: '🛒', Transport: '🚗', Health: '💊', Utilities: '💡',
   Investment: '📈', Shopping: '🛍️', Social: '🎉', Travel: '✈️', Education: '📚', Other: '📦',
   Salary: '💰', Reimbursement: '↩️', Bonus: '🎁', Overtime: '⏱️', 'Investment Returns': '📊',

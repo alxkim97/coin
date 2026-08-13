@@ -1,6 +1,8 @@
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, categoryBudgetType, CATEGORY_ICONS } from '../categories.js'
-import { addTransaction, updateTransaction, deleteTransaction } from '../supabase.js'
-import { todayISO, toast, confirmDialog, formatMoney, escapeHtml } from '../helpers.js'
+import { addTransaction, updateTransaction, deleteTransaction, addRecurring } from '../supabase.js'
+import { todayISO, toast, confirmDialog, formatMoney, escapeHtml, advanceDate, frequencyLabel } from '../helpers.js'
+
+const FREQUENCIES = ['daily', 'weekly', 'monthly', 'quarterly', 'annually']
 
 // Builds a searchable "known items" list from vendor names you've actually used
 // before (transaction history) plus anything saved as a repeat purchase —
@@ -30,6 +32,9 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
   let date = editingTxn?.date || todayISO()
   let subcategory = editingTxn?.subcategory || ''
   let notes = editingTxn?.notes || ''
+  let saveAsRecurring = false
+  let recurMode = 'auto'
+  let recurFrequency = 'monthly'
 
   const itemIndex = buildItemIndex(txns, recurring)
 
@@ -59,7 +64,7 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
         <div class="quick-chip-row" id="quickChips">
           ${quicks.map(r => `
             <button type="button" class="quick-chip" data-id="${r.id}">
-              <span class="qc-name">${CATEGORY_ICONS[r.category] || '💵'} ${r.subcategory ? r.subcategory.replace(/"/g, '&quot;') : r.category}</span>
+              <span class="qc-name">${CATEGORY_ICONS[r.category] || '💵'} ${escapeHtml(r.subcategory || r.category)}</span>
               <span class="qc-amt">${formatMoney(r.amount)}</span>
             </button>
           `).join('')}
@@ -86,6 +91,25 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
 
       <label>Notes (optional)</label>
       <textarea id="notesInput" rows="2" placeholder="Anything else...">${notes}</textarea>
+
+      <div class="card" style="margin-top:16px">
+        <label class="checkbox-row" style="margin-top:0">
+          <input type="checkbox" id="saveAsRecurring" ${saveAsRecurring ? 'checked' : ''} />
+          <span>Also save as Repeat Purchase</span>
+        </label>
+        ${saveAsRecurring ? `
+          <div class="toggle-row" id="recurModeToggle" style="margin-top:12px">
+            <button type="button" data-mode="auto" class="${recurMode === 'auto' ? 'active' : ''}">Automatic</button>
+            <button type="button" data-mode="quick" class="${recurMode === 'quick' ? 'active' : ''}">Quick Pick</button>
+          </div>
+          ${recurMode === 'auto' ? `
+            <label>Frequency</label>
+            <select id="recurFrequency">
+              ${FREQUENCIES.map(f => `<option value="${f}" ${f === recurFrequency ? 'selected' : ''}>${frequencyLabel(f)}</option>`).join('')}
+            </select>
+          ` : `<div style="font-size:12px;color:var(--text2);margin-top:8px">Shows up as a one-tap chip under Frequently Used — you log it manually each time.</div>`}
+        ` : ''}
+      </div>
 
       <div style="margin-top:22px;display:flex;flex-direction:column;gap:10px">
         <button class="btn" id="saveBtn">${isEdit ? 'Save Changes' : 'Add Transaction'}</button>
@@ -156,6 +180,11 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
 
     container.querySelector('#dateInput').oninput = e => { date = e.target.value }
     container.querySelector('#notesInput').oninput = e => { notes = e.target.value }
+    container.querySelector('#saveAsRecurring').onchange = e => { saveAsRecurring = e.target.checked; draw() }
+    container.querySelectorAll('#recurModeToggle button').forEach(btn => {
+      btn.onclick = () => { recurMode = btn.dataset.mode; draw() }
+    })
+    container.querySelector('#recurFrequency')?.addEventListener('change', e => { recurFrequency = e.target.value })
     container.querySelector('#saveBtn').onclick = save
     container.querySelector('#cancelBtn')?.addEventListener('click', () => onSaved())
     container.querySelector('#deleteBtn')?.addEventListener('click', async () => {
@@ -192,11 +221,28 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
       }
       if (isEdit) {
         await updateTransaction(editingTxn.id, payload)
-        toast('Transaction updated')
       } else {
         await addTransaction(payload)
-        toast('Added')
       }
+      let msg = isEdit ? 'Transaction updated' : 'Added'
+      if (saveAsRecurring) {
+        try {
+          await addRecurring({
+            type,
+            category,
+            subcategory: subcategory || null,
+            amount: amt,
+            mode: recurMode,
+            frequency: recurMode === 'auto' ? recurFrequency : null,
+            next_due: recurMode === 'auto' ? advanceDate(date, recurFrequency) : null,
+            active: true,
+          })
+          msg += ' · saved as repeat purchase'
+        } catch (e) {
+          msg += ' — but repeat purchase setup failed'
+        }
+      }
+      toast(msg)
       onSaved()
     } catch (e) {
       toast(e.message || 'Failed to save')

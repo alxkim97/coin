@@ -3,9 +3,24 @@ export function formatMoney(n) {
   return '฿' + v.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 }
 
+// Formats a Date using its LOCAL year/month/day — never use .toISOString()
+// for this. toISOString() converts to UTC first, which silently shifts the
+// date backward by a day for anyone in a positive-UTC-offset timezone
+// (Thailand included) whenever the Date represents local midnight — exactly
+// what every month-boundary/date-math helper below constructs. This bit us
+// for real: monthRange/rangeWindow were off by a day at every month
+// boundary, effectiveDate's salary shift landed on the wrong day entirely,
+// and advanceDate lost whole recurring periods. Route every local date
+// through this instead.
+export function localISO(d) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 export function todayISO() {
-  const d = new Date()
-  return d.toISOString().slice(0, 10)
+  return localISO(new Date())
 }
 
 // Average monthly spend per expense category over the trailing N months —
@@ -14,7 +29,7 @@ export function todayISO() {
 export function computeSuggestedLimits(txns, months = 3) {
   const cutoff = new Date()
   cutoff.setMonth(cutoff.getMonth() - months)
-  const cutoffStr = cutoff.toISOString().slice(0, 10)
+  const cutoffStr = localISO(cutoff)
   const sums = {}
   for (const t of txns) {
     if (t.type !== 'expense' || t.date < cutoffStr) continue
@@ -30,14 +45,14 @@ export function monthLabel(year, month) {
 }
 
 export function monthRange(year, month) {
-  const from = new Date(year, month, 1).toISOString().slice(0, 10)
-  const to = new Date(year, month + 1, 0).toISOString().slice(0, 10)
+  const from = localISO(new Date(year, month, 1))
+  const to = localISO(new Date(year, month + 1, 0))
   return { from, to }
 }
 
 export function rangeWindow(year, month, span) {
-  const from = new Date(year, month - (span - 1), 1).toISOString().slice(0, 10)
-  const to = new Date(year, month + 1, 0).toISOString().slice(0, 10)
+  const from = localISO(new Date(year, month - (span - 1), 1))
+  const to = localISO(new Date(year, month + 1, 0))
   return { from, to }
 }
 
@@ -59,7 +74,7 @@ export function effectiveDate(t) {
   if (t.type !== 'income' || t.category !== 'Salary') return t.date
   const d = new Date(t.date + 'T00:00:00')
   if (d.getDate() < SALARY_SHIFT_DAY) return t.date
-  return new Date(d.getFullYear(), d.getMonth() + 1, 1).toISOString().slice(0, 10)
+  return localISO(new Date(d.getFullYear(), d.getMonth() + 1, 1))
 }
 
 const FREQUENCY_LABELS = { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly', quarterly: 'Quarterly', annually: 'Annually' }
@@ -67,14 +82,31 @@ export function frequencyLabel(frequency) {
   return FREQUENCY_LABELS[frequency] || frequency
 }
 
+// Month-based frequencies (monthly/quarterly/annually) clamp to the target
+// month's last day instead of overflowing (native setMonth on day 31 rolls
+// into the month after next when the target month is shorter) — e.g. a
+// monthly item due Jan 31 lands on Feb 28, not Mar 3. Once clamped, later
+// months stay clamped rather than jumping back to 31 — same "sticky"
+// behavior most calendar apps use for end-of-month recurrences.
 export function advanceDate(dateStr, frequency) {
   const d = new Date(dateStr + 'T00:00:00')
-  if (frequency === 'daily') d.setDate(d.getDate() + 1)
-  else if (frequency === 'weekly') d.setDate(d.getDate() + 7)
-  else if (frequency === 'quarterly') d.setMonth(d.getMonth() + 3)
-  else if (frequency === 'annually') d.setFullYear(d.getFullYear() + 1)
-  else d.setMonth(d.getMonth() + 1) // monthly, and the default for anything unrecognized
-  return d.toISOString().slice(0, 10)
+  if (frequency === 'daily') { d.setDate(d.getDate() + 1); return localISO(d) }
+  if (frequency === 'weekly') { d.setDate(d.getDate() + 7); return localISO(d) }
+  const monthsToAdd = frequency === 'quarterly' ? 3 : frequency === 'annually' ? 12 : 1 // monthly, and the default for anything unrecognized
+  const day = d.getDate()
+  d.setDate(1) // park on the 1st while changing month so the overflow never happens in the first place
+  d.setMonth(d.getMonth() + monthsToAdd)
+  const daysInTargetMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
+  d.setDate(Math.min(day, daysInTargetMonth))
+  return localISO(d)
+}
+
+export function formatDateDMY(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00')
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const yy = String(d.getFullYear()).slice(-2)
+  return `${dd}/${mm}/${yy}`
 }
 
 export function dateHeaderLabel(dateStr) {
@@ -85,7 +117,8 @@ export function dateHeaderLabel(dateStr) {
   const sameDay = (a, b) => a.toDateString() === b.toDateString()
   if (sameDay(d, today)) return 'Today'
   if (sameDay(d, yesterday)) return 'Yesterday'
-  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+  const weekday = d.toLocaleDateString('en-US', { weekday: 'short' })
+  return `${weekday} ${formatDateDMY(dateStr)}`
 }
 
 let toastTimer = null

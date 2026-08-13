@@ -103,6 +103,7 @@ autoUpdater.on('error', (err) => {
   console.error('autoUpdater error:', err)
 })
 
+let checkInProgress = false
 function checkForUpdates(manual) {
   if (isDev) return updateDownloaded ? 'downloaded' : 'skipped-dev'
   if (!manual) {
@@ -113,10 +114,22 @@ function checkForUpdates(manual) {
     dialog.showMessageBox({ type: 'info', title: 'Coin', message: 'Update already downloaded — restart Coin to install it.' })
     return
   }
+  if (checkInProgress) return // a click already in flight — let it finish rather than stacking duplicate dialogs
+  checkInProgress = true
   const cleanup = () => {
+    checkInProgress = false
     autoUpdater.off('update-not-available', onNotAvailable)
-    autoUpdater.off('update-available', cleanup)
+    autoUpdater.off('update-available', onAvailable)
     autoUpdater.off('error', onError)
+  }
+  const onAvailable = (info) => {
+    cleanup()
+    dialog.showMessageBox({
+      type: 'info',
+      title: 'Coin',
+      message: `Update found: Coin ${info.version}`,
+      detail: 'Downloading now — you\'ll get another prompt when it\'s ready to install.',
+    })
   }
   const onNotAvailable = () => {
     cleanup()
@@ -132,7 +145,7 @@ function checkForUpdates(manual) {
     })
   }
   autoUpdater.once('update-not-available', onNotAvailable)
-  autoUpdater.once('update-available', cleanup)
+  autoUpdater.once('update-available', onAvailable)
   autoUpdater.once('error', onError)
   autoUpdater.checkForUpdates().catch(() => {})
 }

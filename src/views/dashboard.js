@@ -1,6 +1,7 @@
 import { formatMoney, rangeLabel, rangeWindow, escapeHtml, effectiveDate } from '../helpers.js'
 import { BUDGET_TYPE_ORDER } from '../categories.js'
 import { getOrder, setOrder, getCollapsed, toggleCollapsed } from '../dashboardLayout.js'
+import { computeCurrentLoggingStreak, computeBudgetStreak } from '../achievements.js'
 
 const RANGES = [1, 3, 6, 12]
 
@@ -75,6 +76,10 @@ export function renderDashboard(container, opts) {
           </div>
         `).join(''),
     },
+    streaks: {
+      title: 'Streaks',
+      body: renderStreaksBody(txns, budgets),
+    },
   }
 
   const order = getOrder()
@@ -132,6 +137,38 @@ export function renderDashboard(container, opts) {
     btn.onclick = () => { toggleCollapsed(btn.dataset.widget); renderDashboard(container, opts) }
   })
   setupDragReorder(widgetsEl)
+}
+
+function loggingStreakIcon(days) {
+  if (days >= 30) return '👑'
+  if (days >= 7) return '🔥'
+  if (days >= 1) return '⚡'
+  return '🌱'
+}
+
+function budgetStreakIcon(months) {
+  if (months >= 3) return '🏆'
+  if (months >= 1) return '🛡️'
+  return '⚖️'
+}
+
+function renderStreaksBody(txns, budgets) {
+  const loggingStreak = computeCurrentLoggingStreak(txns)
+  const budgetStreak = computeBudgetStreak(txns, budgets)
+  return `
+    <div class="streak-row">
+      <div class="streak-item">
+        <div class="streak-icon">${loggingStreakIcon(loggingStreak)}</div>
+        <div class="streak-value">${loggingStreak}</div>
+        <div class="streak-label">Day${loggingStreak === 1 ? '' : 's'} Logged in a Row</div>
+      </div>
+      <div class="streak-item">
+        <div class="streak-icon">${budgetStreakIcon(budgetStreak)}</div>
+        <div class="streak-value">${budgetStreak}</div>
+        <div class="streak-label">Month${budgetStreak === 1 ? '' : 's'} Under Budget</div>
+      </div>
+    </div>
+  `
 }
 
 function widgetRowHtml(id, def, isCollapsed) {

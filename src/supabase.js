@@ -112,3 +112,30 @@ export async function deleteRecurring(id) {
   const { error } = await supa.from('coin_recurring').delete().eq('id', id)
   if (error) throw error
 }
+
+/* ── Net worth check-ins ── */
+
+export async function fetchNetWorth() {
+  const { data, error } = await supa.from('coin_networth').select('*, items:coin_networth_items(*)').order('date', { ascending: true })
+  if (error) throw error
+  return data
+}
+
+// items: [{name, category: 'cash'|'invested', value}] — cash/invested on the
+// checkin row are computed rollups of the items, kept so the Analysis chart
+// and Projection (which read n.cash/n.invested directly) don't need to change.
+export async function addNetWorth({ date, items }) {
+  const cash = items.filter(i => i.category === 'cash').reduce((s, i) => s + Number(i.value), 0)
+  const invested = items.filter(i => i.category === 'invested').reduce((s, i) => s + Number(i.value), 0)
+  const { data: checkin, error } = await supa.from('coin_networth').insert({ date, cash, invested }).select().single()
+  if (error) throw error
+  const rows = items.map(i => ({ checkin_id: checkin.id, name: i.name, category: i.category, value: Number(i.value) }))
+  const { data: insertedItems, error: itemsError } = await supa.from('coin_networth_items').insert(rows).select()
+  if (itemsError) throw itemsError
+  return { ...checkin, items: insertedItems }
+}
+
+export async function deleteNetWorth(id) {
+  const { error } = await supa.from('coin_networth').delete().eq('id', id)
+  if (error) throw error
+}

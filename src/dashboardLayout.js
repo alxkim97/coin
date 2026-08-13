@@ -1,7 +1,7 @@
 const ORDER_KEY = 'coin_dash_order'
 const COLLAPSED_KEY = 'coin_dash_collapsed'
 
-export const DEFAULT_ORDER = ['budget', 'category', 'vendors']
+export const DEFAULT_ORDER = ['streaks', 'budget', 'category', 'vendors']
 
 export function getOrder() {
   try {
