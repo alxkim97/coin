@@ -105,7 +105,7 @@ export function renderTransactions(container, { txns, budgets, year, month, onMo
             <div class="txn-row" data-id="${t.id}">
               <div class="txn-icon">${CATEGORY_ICONS[t.category] || '💵'}</div>
               <div class="txn-main">
-                <div class="txn-cat">${escapeHtml(t.category)}</div>
+                <div class="txn-cat">${escapeHtml(t.category)}${t.is_credit_card ? ' <span class="txn-cc" title="Paid via credit card">💳</span>' : ''}</div>
                 ${t.subcategory ? `<div class="txn-sub">${escapeHtml(t.subcategory)}</div>` : ''}
               </div>
               <div class="txn-amt ${t.type}">${t.type === 'income' ? '+' : '−'}${formatMoney(t.amount)}</div>

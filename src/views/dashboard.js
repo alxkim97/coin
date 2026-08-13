@@ -1,12 +1,13 @@
-import { formatMoney, rangeLabel, rangeWindow, escapeHtml, effectiveDate } from '../helpers.js'
+import { formatMoney, rangeLabel, rangeWindow, escapeHtml, effectiveDate, formatDateDMY } from '../helpers.js'
 import { BUDGET_TYPE_ORDER } from '../categories.js'
 import { getOrder, setOrder, getCollapsed, toggleCollapsed } from '../dashboardLayout.js'
 import { computeCurrentLoggingStreak, computeBudgetStreak } from '../achievements.js'
+import { openNetWorthQuickLog } from '../netWorthQuickLog.js'
 
 const RANGES = [1, 3, 6, 12]
 
 export function renderDashboard(container, opts) {
-  const { txns, budgets, year, month, range, onMonthChange, onRangeChange } = opts
+  const { txns, budgets, year, month, range, onMonthChange, onRangeChange, networth, onNetWorthChanged } = opts
   const { from, to } = rangeWindow(year, month, range)
   const rangeTxns = txns.filter(t => { const d = effectiveDate(t); return d >= from && d <= to })
 
@@ -80,6 +81,10 @@ export function renderDashboard(container, opts) {
       title: 'Streaks',
       body: renderStreaksBody(txns, budgets),
     },
+    networth: {
+      title: 'Net Worth',
+      body: renderNetWorthWidgetBody(networth),
+    },
   }
 
   const order = getOrder()
@@ -137,6 +142,10 @@ export function renderDashboard(container, opts) {
     btn.onclick = () => { toggleCollapsed(btn.dataset.widget); renderDashboard(container, opts) }
   })
   setupDragReorder(widgetsEl)
+
+  widgetsEl.querySelector('[data-widget="networth"] .networth-widget-body')?.addEventListener('click', () => {
+    openNetWorthQuickLog({ networth, onSaved: onNetWorthChanged })
+  })
 }
 
 function loggingStreakIcon(days) {
@@ -166,6 +175,45 @@ function renderStreaksBody(txns, budgets) {
         <div class="streak-icon">${budgetStreakIcon(budgetStreak)}</div>
         <div class="streak-value">${budgetStreak}</div>
         <div class="streak-label">Month${budgetStreak === 1 ? '' : 's'} Under Budget</div>
+      </div>
+    </div>
+  `
+}
+
+function renderNetWorthWidgetBody(networth) {
+  const sorted = [...(networth || [])].sort((a, b) => b.date.localeCompare(a.date))
+  const latest = sorted[0]
+  const prev = sorted[1]
+
+  if (!latest) {
+    return `
+      <div class="networth-widget-body">
+        <div class="networth-widget-icon">💰</div>
+        <div class="networth-widget-main">
+          <div class="networth-widget-label">No check-ins yet <span class="networth-widget-tap">· tap to log</span></div>
+          <div class="networth-widget-val">—</div>
+        </div>
+      </div>
+    `
+  }
+
+  const total = Number(latest.cash) + Number(latest.invested)
+  let deltaHtml = `<span class="networth-widget-date">${formatDateDMY(latest.date)}</span>`
+  if (prev) {
+    const prevTotal = Number(prev.cash) + Number(prev.invested)
+    const delta = total - prevTotal
+    const sign = delta >= 0 ? '+' : '−'
+    const color = delta >= 0 ? 'var(--green)' : 'var(--red)'
+    deltaHtml = `<span style="color:${color}">${sign}${formatMoney(Math.abs(delta))}</span> from last`
+  }
+
+  return `
+    <div class="networth-widget-body">
+      <div class="networth-widget-icon">💰</div>
+      <div class="networth-widget-main">
+        <div class="networth-widget-label">Net Worth <span class="networth-widget-tap">· tap to log</span></div>
+        <div class="networth-widget-val">${formatMoney(total)}</div>
+        <div class="networth-widget-delta">${deltaHtml}</div>
       </div>
     </div>
   `

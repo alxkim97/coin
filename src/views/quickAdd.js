@@ -35,6 +35,7 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
   let saveAsRecurring = false
   let recurMode = 'auto'
   let recurFrequency = 'monthly'
+  let isCreditCard = editingTxn?.is_credit_card || false
 
   const itemIndex = buildItemIndex(txns, recurring)
 
@@ -91,6 +92,13 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
 
       <label>Notes (optional)</label>
       <textarea id="notesInput" rows="2" placeholder="Anything else...">${notes}</textarea>
+
+      ${type === 'expense' ? `
+        <label class="checkbox-row" style="margin-top:16px">
+          <input type="checkbox" id="isCreditCard" ${isCreditCard ? 'checked' : ''} />
+          <span>💳 Paid via credit card</span>
+        </label>
+      ` : ''}
 
       <div class="card" style="margin-top:16px">
         <label class="checkbox-row" style="margin-top:0">
@@ -180,6 +188,7 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
 
     container.querySelector('#dateInput').oninput = e => { date = e.target.value }
     container.querySelector('#notesInput').oninput = e => { notes = e.target.value }
+    container.querySelector('#isCreditCard')?.addEventListener('change', e => { isCreditCard = e.target.checked })
     container.querySelector('#saveAsRecurring').onchange = e => { saveAsRecurring = e.target.checked; draw() }
     container.querySelectorAll('#recurModeToggle button').forEach(btn => {
       btn.onclick = () => { recurMode = btn.dataset.mode; draw() }
@@ -218,6 +227,7 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
         subcategory: subcategory || null,
         notes: notes || null,
         budget_type: type === 'expense' ? categoryBudgetType(category) : null,
+        is_credit_card: type === 'expense' ? isCreditCard : false,
       }
       if (isEdit) {
         await updateTransaction(editingTxn.id, payload)

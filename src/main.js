@@ -160,6 +160,8 @@ function render() {
       range: state.range,
       onMonthChange: setMonth,
       onRangeChange: setRange,
+      networth: state.networth,
+      onNetWorthChanged: async () => { await loadNetWorth(); render() },
     })
   } else if (state.view === 'transactions') {
     renderTransactions(screen, {

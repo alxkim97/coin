@@ -115,6 +115,16 @@ Run the `coin_networth` block above once — additive, won't touch existing data
 
 Run the `coin_networth_items` block above once — additive, won't touch existing data or the `coin_networth` table's own columns. A check-in now records a list of named accounts (e.g. "KBANK Savings", "GLD") instead of two lump sums; older check-ins made before this date have no items and keep showing their original cash/invested breakdown.
 
+## Adding the credit-card flag (2026-08-13)
+
+Run this once — additive, existing rows default to `false`:
+
+```sql
+alter table coin_transactions add column if not exists is_credit_card boolean not null default false;
+```
+
+Marks whether an expense was paid on a credit card, so a card's own autopay/statement entry can be told apart from purchases already logged individually. Toggle it from the "Paid via credit card" checkbox on Add/Edit Transaction; a 💳 shows next to flagged transactions in History.
+
 ## One-time data migration
 
 To bring over your existing 1,416 transactions from Ledger's `manual logs/ledger-import-all.json`, see `scripts/migrate.js` in this repo.
