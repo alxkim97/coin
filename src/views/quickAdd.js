@@ -1,6 +1,6 @@
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, categoryBudgetType, CATEGORY_ICONS } from '../categories.js'
 import { addTransaction, updateTransaction, deleteTransaction, addRecurring } from '../supabase.js'
-import { todayISO, toast, confirmDialog, formatMoney, escapeHtml, advanceDate, frequencyLabel } from '../helpers.js'
+import { todayISO, toast, confirmDialog, formatMoney, escapeHtml, advanceDate, frequencyLabel, dmyDateFieldHtml, wireDmyDateField } from '../helpers.js'
 
 const FREQUENCIES = ['daily', 'weekly', 'monthly', 'quarterly', 'annually']
 
@@ -88,7 +88,7 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
       </div>
 
       <label>Date</label>
-      <input id="dateInput" type="date" value="${date}" />
+      ${dmyDateFieldHtml('dateInput', date)}
 
       <label>Notes (optional)</label>
       <textarea id="notesInput" rows="2" placeholder="Anything else...">${notes}</textarea>
@@ -186,7 +186,7 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
     // delay so a click on a suggestion still registers before the list disappears
     subInput.addEventListener('blur', () => setTimeout(closeSuggestions, 150))
 
-    container.querySelector('#dateInput').oninput = e => { date = e.target.value }
+    wireDmyDateField(container, 'dateInput', v => { date = v })
     container.querySelector('#notesInput').oninput = e => { notes = e.target.value }
     container.querySelector('#isCreditCard')?.addEventListener('change', e => { isCreditCard = e.target.checked })
     container.querySelector('#saveAsRecurring').onchange = e => { saveAsRecurring = e.target.checked; draw() }
@@ -246,6 +246,7 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
             frequency: recurMode === 'auto' ? recurFrequency : null,
             next_due: recurMode === 'auto' ? advanceDate(date, recurFrequency) : null,
             active: true,
+            is_credit_card: type === 'expense' ? isCreditCard : false,
           })
           msg += ' · saved as repeat purchase'
         } catch (e) {

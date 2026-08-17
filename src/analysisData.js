@@ -68,6 +68,54 @@ export function heatmapData(txns, days = 371) {
   return byDate
 }
 
+// A check-in only has to list the accounts you're actually updating that time
+// (e.g. just your banks today, just your investments next week) — so "current
+// net worth" can't just read the most recent check-in's own items, or
+// whichever half you updated last would silently blot out the other half.
+// This walks every check-in in date order and keeps the latest known value
+// per account name, so partial updates accumulate instead of overwriting.
+export function latestAccountValues(networth) {
+  const sorted = [...(networth || [])].sort((a, b) => a.date.localeCompare(b.date) || (a.created_at || '').localeCompare(b.created_at || ''))
+  const byName = new Map()
+  for (const checkin of sorted) {
+    for (const item of (checkin.items || [])) {
+      const key = item.name.trim().toLowerCase()
+      byName.set(key, { name: item.name, category: item.category, value: Number(item.value), asOfDate: checkin.date })
+    }
+  }
+  return [...byName.values()]
+}
+
+// One point per check-in *event*, but each point's total reflects the full
+// latest-per-account picture as of that moment (via latestAccountValues),
+// not just that one check-in's own items — so logging banks and investments
+// as two separate check-ins the same day still produces a combined total on
+// the second point instead of a misleading dip back to just one half.
+export function netWorthTimeline(networth) {
+  const sorted = [...(networth || [])].sort((a, b) => a.date.localeCompare(b.date) || (a.created_at || '').localeCompare(b.created_at || ''))
+  const byName = new Map()
+  const points = []
+  for (const checkin of sorted) {
+    for (const item of (checkin.items || [])) {
+      byName.set(item.name.trim().toLowerCase(), { category: item.category, value: Number(item.value) })
+    }
+    let cash = 0, invested = 0, insurance = 0
+    for (const v of byName.values()) {
+      if (v.category === 'cash') cash += v.value
+      else if (v.category === 'insurance') insurance += v.value
+      else invested += v.value // unrecognized future category — still counted, just grouped with invested rather than silently dropped
+    }
+    // legacy check-ins from before multi-asset support have no items at all —
+    // fall back to their own cash/invested fields so old history still counts
+    if (!checkin.items || !checkin.items.length) {
+      cash = Number(checkin.cash) || cash
+      invested = Number(checkin.invested) || invested
+    }
+    points.push({ date: checkin.date, cash, invested, insurance, total: cash + invested + insurance })
+  }
+  return points
+}
+
 // Forward-looking net worth projection from trailing complete-month averages
 // (not the current in-progress month, which would understate spend). Starts
 // from the latest check-in if one exists, else from ฿0 — either way it's
@@ -97,10 +145,10 @@ export function computeProjection(txns, networth, months = 12) {
   if (avgNet <= 0) { phase = 'Tight Month'; phaseIcon = '⚠️' }
   else if (avgInvest > avgNet * 0.3) { phase = 'Investing'; phaseIcon = '📈' }
 
-  const sorted = [...networth].sort((a, b) => b.date.localeCompare(a.date))
-  const latest = sorted[0]
-  const startTotal = latest ? Number(latest.cash) + Number(latest.invested) : 0
-  const startDate = latest ? new Date(latest.date + 'T00:00:00') : now
+  const timeline = netWorthTimeline(networth)
+  const latestPoint = timeline[timeline.length - 1]
+  const startTotal = latestPoint ? latestPoint.total : 0
+  const startDate = latestPoint ? new Date(latestPoint.date + 'T00:00:00') : now
 
   const points = [{ label: 'Now', value: Math.round(startTotal) }]
   let running = startTotal
@@ -110,7 +158,7 @@ export function computeProjection(txns, networth, months = 12) {
     points.push({ label: d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }), value: Math.round(running) })
   }
 
-  return { phase, phaseIcon, avgIncome, avgExpense, avgNet, hasCheckin: !!latest, points }
+  return { phase, phaseIcon, avgIncome, avgExpense, avgNet, hasCheckin: !!latestPoint, points }
 }
 
 // All-time highlight stats — separate from generateInsights (which is a

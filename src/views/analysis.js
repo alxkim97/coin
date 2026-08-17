@@ -1,5 +1,5 @@
 import { Chart, registerables } from 'chart.js'
-import { dailySpend, categoryBreakdown, monthlyRollup, heatmapData, generateInsights, computeProjection, computePersonalRecords } from '../analysisData.js'
+import { dailySpend, categoryBreakdown, monthlyRollup, heatmapData, generateInsights, computeProjection, computePersonalRecords, netWorthTimeline } from '../analysisData.js'
 import { getAchievementDefs } from '../achievements.js'
 import { formatMoney, localISO, toast, formatDateDMY } from '../helpers.js'
 import { isPrivacyMode, setPrivacyMode } from '../privacy.js'
@@ -115,20 +115,22 @@ function renderNetWorthChart(container, networth) {
   if (chartInstances.networth) chartInstances.networth.destroy()
   container.querySelector('#networthEmpty')?.remove()
 
-  if (!networth.length) {
+  const timeline = netWorthTimeline(networth)
+  if (!timeline.length) {
     canvas.style.display = 'none'
     canvas.insertAdjacentHTML('afterend', '<div class="empty-state" id="networthEmpty">No check-ins yet — add one in Settings → Net Worth.</div>')
     return
   }
   canvas.style.display = ''
 
-  const sorted = [...networth].sort((a, b) => a.date.localeCompare(b.date))
-  const labels = sorted.map(n => new Date(n.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: '2-digit' }))
+  const labels = timeline.map(n => new Date(n.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: '2-digit' }))
   const text3 = cssVar('--text3')
   const grid = cssVar('--chart-grid')
   const c1 = cssVar('--chart-1')
   const c3 = cssVar('--chart-3')
+  const c5 = cssVar('--chart-5')
   const accent = cssVar('--accent')
+  const hasInsurance = timeline.some(n => n.insurance > 0)
 
   chartInstances.networth = new Chart(canvas.getContext('2d'), {
     type: 'line',
@@ -136,18 +138,22 @@ function renderNetWorthChart(container, networth) {
       labels,
       datasets: [
         {
-          label: 'Total', data: sorted.map(n => Number(n.cash) + Number(n.invested)),
+          label: 'Total', data: timeline.map(n => n.total),
           borderColor: accent, backgroundColor: accent + '22', borderWidth: 3,
           fill: true, tension: 0.3, pointRadius: 3,
         },
         {
-          label: 'Cash', data: sorted.map(n => Number(n.cash)),
+          label: 'Cash', data: timeline.map(n => n.cash),
           borderColor: c1, borderWidth: 1.5, borderDash: [4, 3], fill: false, tension: 0.3, pointRadius: 2,
         },
         {
-          label: 'Invested', data: sorted.map(n => Number(n.invested)),
+          label: 'Invested', data: timeline.map(n => n.invested),
           borderColor: c3, borderWidth: 1.5, borderDash: [4, 3], fill: false, tension: 0.3, pointRadius: 2,
         },
+        ...(hasInsurance ? [{
+          label: 'Insurance', data: timeline.map(n => n.insurance),
+          borderColor: c5, borderWidth: 1.5, borderDash: [4, 3], fill: false, tension: 0.3, pointRadius: 2,
+        }] : []),
       ],
     },
     options: {

@@ -1,6 +1,6 @@
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, BUDGET_TYPE_ORDER, CATEGORY_ICONS } from '../categories.js'
 import { upsertBudget, signOut, addRecurring, updateRecurring, deleteRecurring, updateEmail, updateDisplayName, addNetWorth, deleteNetWorth } from '../supabase.js'
-import { toast, downloadFile, txnsToCsv, todayISO, formatMoney, confirmDialog, frequencyLabel, escapeHtml, computeSuggestedLimits, formatDateDMY } from '../helpers.js'
+import { toast, downloadFile, txnsToCsv, todayISO, formatMoney, confirmDialog, frequencyLabel, escapeHtml, computeSuggestedLimits, formatDateDMY, dmyDateFieldHtml, wireDmyDateField } from '../helpers.js'
 import { ACCENTS, getMode, setMode, getAccent, setAccent } from '../theme.js'
 import { isPrivacyMode, setPrivacyMode } from '../privacy.js'
 
@@ -122,7 +122,7 @@ export function renderSettings(container, opts) {
               <div class="networth-date">${formatDateDMY(n.date)}</div>
               <div class="networth-breakdown">${n.items && n.items.length ? n.items.map(i => `${escapeHtml(i.name)} ${formatMoney(i.value)}`).join(' · ') : `${formatMoney(n.cash)} cash · ${formatMoney(n.invested)} invested`}</div>
             </div>
-            <div class="networth-total">${formatMoney(Number(n.cash) + Number(n.invested))}</div>
+            <div class="networth-total">${formatMoney(n.items && n.items.length ? n.items.reduce((s, i) => s + Number(i.value), 0) : Number(n.cash) + Number(n.invested))}</div>
             <button class="networth-delete" data-id="${n.id}">Delete</button>
           </div>
         `).join('')}
@@ -240,7 +240,7 @@ export function renderSettings(container, opts) {
   }
 
   container.querySelector('#addRecurringBtn')?.addEventListener('click', () => {
-    recurringForm = { id: null, type: 'expense', category: null, subcategory: '', amount: '', mode: 'auto', frequency: 'monthly', next_due: todayISO() }
+    recurringForm = { id: null, type: 'expense', category: null, subcategory: '', amount: '', mode: 'auto', frequency: 'monthly', next_due: todayISO(), is_credit_card: false }
     renderSettings(container, opts)
   })
   container.querySelectorAll('.recurring-edit').forEach(btn => {
@@ -250,6 +250,7 @@ export function renderSettings(container, opts) {
       recurringForm = {
         id: r.id, type: r.type, category: r.category, subcategory: r.subcategory || '',
         amount: String(r.amount), mode: r.mode, frequency: r.frequency || 'monthly', next_due: r.next_due || todayISO(),
+        is_credit_card: r.is_credit_card || false,
       }
       renderSettings(container, opts)
     }
@@ -348,11 +349,18 @@ function renderRecurringForm(form) {
           ${FREQUENCIES.map(f => `<option value="${f}" ${form.frequency === f ? 'selected' : ''}>${frequencyLabel(f)}</option>`).join('')}
         </select>
         <label>Next Due</label>
-        <input id="recNextDue" type="date" value="${form.next_due}" />
+        ${dmyDateFieldHtml('recNextDue', form.next_due)}
         <div style="font-size:12px;color:var(--text2);margin-top:8px">Posts automatically as a real transaction the next time you open Coin on or after this date.</div>
       ` : `
         <div style="font-size:12px;color:var(--text2);margin-top:8px">Shows as a one-tap shortcut on the Add screen — nothing posts until you tap it there.</div>
       `}
+
+      ${form.type === 'expense' ? `
+        <label class="checkbox-row" style="margin-top:16px">
+          <input type="checkbox" id="recIsCreditCard" ${form.is_credit_card ? 'checked' : ''} />
+          <span>💳 Paid via credit card</span>
+        </label>
+      ` : ''}
 
       <div style="display:flex;gap:10px;margin-top:16px">
         <button class="btn" id="recSave">${form.id ? 'Save Changes' : 'Add'}</button>
@@ -378,7 +386,8 @@ function wireRecurringForm(container, opts) {
     btn.onclick = () => { recurringForm.mode = btn.dataset.mode; renderSettings(container, opts) }
   })
   container.querySelector('#recFrequency')?.addEventListener('change', e => { recurringForm.frequency = e.target.value })
-  container.querySelector('#recNextDue')?.addEventListener('input', e => { recurringForm.next_due = e.target.value })
+  if (container.querySelector('#recNextDue')) wireDmyDateField(container, 'recNextDue', v => { recurringForm.next_due = v })
+  container.querySelector('#recIsCreditCard')?.addEventListener('change', e => { recurringForm.is_credit_card = e.target.checked })
 
   container.querySelector('#recCancel').onclick = () => { recurringForm = null; renderSettings(container, opts) }
 
@@ -399,6 +408,7 @@ function wireRecurringForm(container, opts) {
         frequency: recurringForm.mode === 'auto' ? recurringForm.frequency : null,
         next_due: recurringForm.mode === 'auto' ? recurringForm.next_due : null,
         active: true,
+        is_credit_card: recurringForm.type === 'expense' ? !!recurringForm.is_credit_card : false,
       }
       if (recurringForm.id) {
         await updateRecurring(recurringForm.id, payload)
@@ -443,6 +453,7 @@ function renderNetWorthForm(form) {
           <select class="nwItemCategory">
             <option value="cash" ${it.category === 'cash' ? 'selected' : ''}>Cash</option>
             <option value="invested" ${it.category === 'invested' ? 'selected' : ''}>Invested</option>
+            <option value="insurance" ${it.category === 'insurance' ? 'selected' : ''}>Insurance</option>
           </select>
           <input class="nwItemValue" type="number" inputmode="decimal" placeholder="0" value="${escapeHtml(it.value)}" />
           <button class="nwItemRemove" type="button" ${form.items.length <= 1 ? 'disabled' : ''}>✕</button>

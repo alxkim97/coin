@@ -1,8 +1,9 @@
 import { formatMoney, rangeLabel, rangeWindow, escapeHtml, effectiveDate, formatDateDMY } from '../helpers.js'
-import { BUDGET_TYPE_ORDER } from '../categories.js'
+import { BUDGET_TYPE_ORDER, EXPENSE_CATEGORIES } from '../categories.js'
 import { getOrder, setOrder, getCollapsed, toggleCollapsed } from '../dashboardLayout.js'
 import { computeCurrentLoggingStreak, computeBudgetStreak } from '../achievements.js'
 import { openNetWorthQuickLog } from '../netWorthQuickLog.js'
+import { netWorthTimeline } from '../analysisData.js'
 
 const RANGES = [1, 3, 6, 12]
 
@@ -28,9 +29,13 @@ export function renderDashboard(container, opts) {
   }
   const topVendors = Object.entries(spentByVendor).sort((a, b) => b[1].amount - a[1].amount).slice(0, 5)
 
-  // budget limits are monthly — scale to the window so "Budget vs Actual" stays meaningful across ranges
+  // budget limits are monthly — scale to the window so "Budget vs Actual" stays meaningful across ranges.
+  // Also drop any budget row whose category no longer exists (e.g. a removed
+  // category like the old Subscriptions) — deleting a category from the
+  // picker doesn't delete rows already saved for it in coin_budgets.
+  const validCategoryNames = new Set(EXPENSE_CATEGORIES.map(c => c.name))
   const activeBudgets = budgets
-    .filter(b => b.monthly_limit > 0)
+    .filter(b => b.monthly_limit > 0 && validCategoryNames.has(b.category))
     .sort((a, b) => BUDGET_TYPE_ORDER.indexOf(a.budget_type) - BUDGET_TYPE_ORDER.indexOf(b.budget_type))
 
   const widgets = {
@@ -181,9 +186,9 @@ function renderStreaksBody(txns, budgets) {
 }
 
 function renderNetWorthWidgetBody(networth) {
-  const sorted = [...(networth || [])].sort((a, b) => b.date.localeCompare(a.date))
-  const latest = sorted[0]
-  const prev = sorted[1]
+  const timeline = netWorthTimeline(networth)
+  const latest = timeline[timeline.length - 1]
+  const prev = timeline[timeline.length - 2]
 
   if (!latest) {
     return `
@@ -197,15 +202,17 @@ function renderNetWorthWidgetBody(networth) {
     `
   }
 
-  const total = Number(latest.cash) + Number(latest.invested)
+  const total = latest.total
   let deltaHtml = `<span class="networth-widget-date">${formatDateDMY(latest.date)}</span>`
   if (prev) {
-    const prevTotal = Number(prev.cash) + Number(prev.invested)
-    const delta = total - prevTotal
+    const delta = total - prev.total
     const sign = delta >= 0 ? '+' : '−'
     const color = delta >= 0 ? 'var(--green)' : 'var(--red)'
     deltaHtml = `<span style="color:${color}">${sign}${formatMoney(Math.abs(delta))}</span> from last`
   }
+
+  const splitParts = [`Liquid ${formatMoney(latest.cash)}`, `Invested ${formatMoney(latest.invested)}`]
+  if (latest.insurance > 0) splitParts.push(`Insurance ${formatMoney(latest.insurance)}`)
 
   return `
     <div class="networth-widget-body">
@@ -213,6 +220,7 @@ function renderNetWorthWidgetBody(networth) {
       <div class="networth-widget-main">
         <div class="networth-widget-label">Net Worth <span class="networth-widget-tap">· tap to log</span></div>
         <div class="networth-widget-val">${formatMoney(total)}</div>
+        <div class="networth-widget-split">${splitParts.join(' · ')}</div>
         <div class="networth-widget-delta">${deltaHtml}</div>
       </div>
     </div>

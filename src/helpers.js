@@ -109,6 +109,30 @@ export function formatDateDMY(dateStr) {
   return `${dd}/${mm}/${yy}`
 }
 
+// A native <input type="date"> displays its text in whatever format the OS/
+// browser locale dictates (MM/DD/YYYY on this machine) — there's no way to
+// override that directly. This overlays our own DD/MM/YY text on top (the
+// native input's own text is made transparent via CSS) while leaving the
+// real date input underneath fully interactive, so the native calendar
+// picker still works exactly as before; only what you *read* changes.
+export function dmyDateFieldHtml(id, value) {
+  return `
+    <div class="date-field-dmy">
+      <input type="date" id="${id}" value="${value}" />
+      <div class="date-display" id="${id}Display">${value ? formatDateDMY(value) : ''}</div>
+    </div>
+  `
+}
+
+export function wireDmyDateField(container, id, onChange) {
+  const input = container.querySelector('#' + id)
+  const display = container.querySelector('#' + id + 'Display')
+  input.oninput = e => {
+    display.textContent = e.target.value ? formatDateDMY(e.target.value) : ''
+    onChange(e.target.value)
+  }
+}
+
 export function dateHeaderLabel(dateStr) {
   const d = new Date(dateStr + 'T00:00:00')
   const today = new Date()

@@ -79,6 +79,7 @@ async function processRecurring() {
           subcategory: r.subcategory,
           notes: r.notes,
           budget_type: r.type === 'expense' ? categoryBudgetType(r.category) : null,
+          is_credit_card: r.is_credit_card || false,
         })
         logged++
         nextDue = advanceDate(nextDue, r.frequency)

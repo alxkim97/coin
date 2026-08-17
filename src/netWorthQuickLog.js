@@ -1,19 +1,24 @@
 import { addNetWorth } from './supabase.js'
-import { toast, todayISO, escapeHtml } from './helpers.js'
+import { toast, todayISO, escapeHtml, formatMoney, dmyDateFieldHtml, wireDmyDateField } from './helpers.js'
+import { latestAccountValues } from './analysisData.js'
 
-// Pre-fills from the most recent check-in's accounts so logging a new one is
-// just "update the numbers," not "retype every account name again" — the
-// same low-friction idea as a quick weight-log popup, applied to a
-// multi-field entry instead of a single number.
+// Pre-fills from every account's latest known value across ALL check-ins —
+// not just whichever check-in happened to be most recent — so logging just
+// your banks today and your investments next week still carries the other
+// half forward instead of dropping it. Same low-friction idea as a quick
+// weight-log popup, applied to a multi-field entry instead of a single number.
 export function openNetWorthQuickLog({ networth, onSaved }) {
-  const sorted = [...(networth || [])].sort((a, b) => b.date.localeCompare(a.date))
-  const latest = sorted[0]
-  const seedItems = latest?.items?.length
-    ? latest.items.map(i => ({ name: i.name, category: i.category, value: '' }))
-    : [{ name: '', category: 'cash', value: '' }]
+  const known = latestAccountValues(networth)
+  const seedItems = known.length
+    ? known.map(i => ({ name: i.name, category: i.category, value: '', lastValue: i.value }))
+    : [{ name: '', category: 'cash', value: '', lastValue: null }]
 
   let items = seedItems
   let date = todayISO()
+  // which field to focus on the next render — defaults to the first row's
+  // value (updating pre-filled balances); +Add Account points this at the
+  // new row's name input instead, since that one's actually empty
+  let focusTarget = { index: 0, field: 'value' }
 
   const overlay = document.createElement('div')
   overlay.className = 'confirm-overlay'
@@ -23,10 +28,9 @@ export function openNetWorthQuickLog({ networth, onSaved }) {
     overlay.innerHTML = `
       <div class="confirm-box nwq-box">
         <div class="nwq-title">💰 Log Net Worth</div>
-        <div class="nwq-sub">${latest ? 'Update each balance below' : 'Add your accounts and balances'}</div>
-        <label class="nwq-date-label">Date
-          <input type="date" id="nwqDate" value="${date}" />
-        </label>
+        <div class="nwq-sub">${known.length ? 'Update only what changed — leave the rest blank' : 'Add your accounts and balances'}</div>
+        <div class="nwq-date-label">Date</div>
+        ${dmyDateFieldHtml('nwqDate', date)}
         <div class="nwq-rows">
           ${items.map((it, i) => `
             <div class="nw-item-row" data-index="${i}">
@@ -34,13 +38,15 @@ export function openNetWorthQuickLog({ networth, onSaved }) {
               <select class="nwItemCategory">
                 <option value="cash" ${it.category === 'cash' ? 'selected' : ''}>Cash</option>
                 <option value="invested" ${it.category === 'invested' ? 'selected' : ''}>Invested</option>
+                <option value="insurance" ${it.category === 'insurance' ? 'selected' : ''}>Insurance</option>
               </select>
-              <input class="nwItemValue" type="number" inputmode="decimal" placeholder="0" value="${escapeHtml(it.value)}" />
+              <input class="nwItemValue" type="number" inputmode="decimal" placeholder="${it.lastValue != null ? escapeHtml(formatMoney(it.lastValue)) : '0'}" value="${escapeHtml(it.value)}" />
               <button class="nwItemRemove" type="button" ${items.length <= 1 ? 'disabled' : ''}>✕</button>
             </div>
           `).join('')}
         </div>
-        <button class="btn secondary" id="nwqAddItem" style="margin-top:4px">+ Add Account</button>
+        <div style="font-size:11.5px;color:var(--text3);margin-top:6px">Leave a balance blank to skip that account this time — it won't be zeroed out.</div>
+        <button class="btn secondary" id="nwqAddItem" style="margin-top:8px">+ Add Account</button>
         <div class="confirm-actions" style="margin-top:16px">
           <button class="btn secondary" id="nwqCancel">Cancel</button>
           <button class="btn" id="nwqSave">Save</button>
@@ -48,12 +54,13 @@ export function openNetWorthQuickLog({ networth, onSaved }) {
       </div>
     `
     wire()
-    const firstValue = overlay.querySelector('.nwItemValue')
-    if (firstValue) setTimeout(() => firstValue.focus(), 80)
+    const row = overlay.querySelector(`.nw-item-row[data-index="${focusTarget.index}"]`)
+    const field = row?.querySelector(focusTarget.field === 'name' ? '.nwItemName' : '.nwItemValue')
+    if (field) setTimeout(() => field.focus(), 80)
   }
 
   function wire() {
-    overlay.querySelector('#nwqDate').oninput = e => { date = e.target.value }
+    wireDmyDateField(overlay, 'nwqDate', v => { date = v })
     overlay.querySelector('#nwqCancel').onclick = close
     overlay.onclick = (e) => { if (e.target === overlay) close() }
 
@@ -67,30 +74,39 @@ export function openNetWorthQuickLog({ networth, onSaved }) {
     })
 
     overlay.querySelector('#nwqAddItem').onclick = () => {
-      items.push({ name: '', category: 'cash', value: '' })
+      items.push({ name: '', category: 'cash', value: '', lastValue: null })
+      focusTarget = { index: items.length - 1, field: 'name' }
       render()
     }
     overlay.querySelector('#nwqSave').onclick = save
   }
 
   async function save() {
+    // a blank value means "skip this account this time," not "set it to 0" —
+    // only rows the user actually typed a number into get saved
     const cleaned = items
-      .map(it => ({ name: it.name.trim(), category: it.category, value: parseFloat(it.value) || 0 }))
-      .filter(it => it.name)
+      .map(it => ({ name: it.name.trim(), category: it.category, value: it.value }))
+      .filter(it => it.name && it.value !== '')
+      .map(it => ({ name: it.name, category: it.category, value: parseFloat(it.value) || 0 }))
     if (!date) { toast('Pick a date'); return }
-    if (!cleaned.length) { toast('Add at least one named account'); return }
+    if (!cleaned.length) { toast('Enter at least one balance'); return }
     const btn = overlay.querySelector('#nwqSave')
     btn.disabled = true
     btn.textContent = 'Saving…'
     try {
       await addNetWorth({ date, items: cleaned })
-      toast('Net worth logged')
-      close()
-      await onSaved()
     } catch (e) {
       toast(e.message || 'Failed to save')
       btn.disabled = false
       btn.textContent = 'Save'
+      return
+    }
+    toast('Net worth logged')
+    close()
+    try {
+      await onSaved()
+    } catch (e) {
+      console.error('Net worth saved, but refreshing the view failed', e)
     }
   }
 

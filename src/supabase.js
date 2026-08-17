@@ -131,7 +131,12 @@ export async function addNetWorth({ date, items }) {
   if (error) throw error
   const rows = items.map(i => ({ checkin_id: checkin.id, name: i.name, category: i.category, value: Number(i.value) }))
   const { data: insertedItems, error: itemsError } = await supa.from('coin_networth_items').insert(rows).select()
-  if (itemsError) throw itemsError
+  if (itemsError) {
+    // roll back the checkin row we just created — otherwise a failed items
+    // insert leaves an orphaned, item-less checkin behind permanently
+    await supa.from('coin_networth').delete().eq('id', checkin.id)
+    throw itemsError
+  }
   return { ...checkin, items: insertedItems }
 }
 

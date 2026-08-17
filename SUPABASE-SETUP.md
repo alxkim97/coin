@@ -111,6 +111,18 @@ If you set up Coin before this date, run the `coin_recurring` block above once i
 
 Run the `coin_networth` block above once — additive, won't touch existing data. Manage check-ins from Settings → Net Worth; the trend shows up under Analysis once you've logged at least one.
 
+## Adding the Insurance net worth category (2026-08-14)
+
+Run this once — additive, existing "cash"/"invested" rows are untouched:
+
+```sql
+alter table coin_networth_items drop constraint coin_networth_items_category_check;
+alter table coin_networth_items add constraint coin_networth_items_category_check
+  check (category in ('cash', 'invested', 'insurance'));
+```
+
+Adds a third net worth account category for things like an insurance policy's cash/surrender value (e.g. "Tokio Marine Cash Value") — it's real money, but it's neither spendable cash nor a market investment, so it gets its own bucket instead of being miscounted as either. Shows as its own line on the dashboard widget and its own line in the Analysis Net Worth chart once you log at least one.
+
 ## Adding multi-asset net worth (2026-08-10)
 
 Run the `coin_networth_items` block above once — additive, won't touch existing data or the `coin_networth` table's own columns. A check-in now records a list of named accounts (e.g. "KBANK Savings", "GLD") instead of two lump sums; older check-ins made before this date have no items and keep showing their original cash/invested breakdown.
@@ -124,6 +136,16 @@ alter table coin_transactions add column if not exists is_credit_card boolean no
 ```
 
 Marks whether an expense was paid on a credit card, so a card's own autopay/statement entry can be told apart from purchases already logged individually. Toggle it from the "Paid via credit card" checkbox on Add/Edit Transaction; a 💳 shows next to flagged transactions in History.
+
+## Adding the credit-card flag to repeat purchases (2026-08-14)
+
+Run this once — additive, existing rows default to `false`:
+
+```sql
+alter table coin_recurring add column if not exists is_credit_card boolean not null default false;
+```
+
+Lets a repeat purchase (Settings → Repeat Purchases, or the checkbox on Add Transaction) carry the same flag, so transactions it auto-posts show the 💳 badge too.
 
 ## One-time data migration
 
