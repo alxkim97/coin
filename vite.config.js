@@ -1,11 +1,19 @@
 import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import { readFileSync } from 'fs'
+
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url)))
 
 export default defineConfig({
   // Relative asset paths — Vercel resolves them fine from '/', and it's what
   // lets the Electron build load dist/index.html straight off disk (file://
   // can't resolve root-absolute '/assets/...' paths).
   base: './',
+  // Exposed in-app (tabbar footer) so it's obvious whether a deploy landed,
+  // instead of guessing from PWA/service-worker cache behavior.
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
   server: {
     host: true, // expose on LAN so it's reachable from your phone during dev
   },

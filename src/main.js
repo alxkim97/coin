@@ -226,11 +226,13 @@ function render() {
     btn.onclick = () => setView(btn.dataset.view)
   })
 
+  // Shown on web too (not just Electron) so it's obvious at a glance whether
+  // a deploy actually landed, instead of guessing from PWA/service-worker cache.
+  const footer = document.createElement('div')
+  footer.className = 'tabbar-footer'
+  footer.innerHTML = `Coin v<span id="tabbarVersion">${__APP_VERSION__}</span> · Alex Kim`
+  tabbar.appendChild(footer)
   if (window.electronAPI?.isElectron) {
-    const footer = document.createElement('div')
-    footer.className = 'tabbar-footer'
-    footer.innerHTML = 'Coin v<span id="tabbarVersion">…</span> · Alex Kim'
-    tabbar.appendChild(footer)
     window.electronAPI.getVersion().then(v => {
       const el = footer.querySelector('#tabbarVersion')
       if (el) el.textContent = v
