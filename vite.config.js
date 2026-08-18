@@ -37,6 +37,12 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,png,svg,ico}'],
+        // Without these, a new service worker installs but waits for every
+        // open tab to fully close before taking over — so a refresh alone
+        // kept serving the old cached bundle after a deploy. This makes a
+        // new version activate (and reload) on the very next page load.
+        skipWaiting: true,
+        clientsClaim: true,
       },
     }),
   ],
