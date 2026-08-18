@@ -36,6 +36,7 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
   let recurMode = 'auto'
   let recurFrequency = 'monthly'
   let isCreditCard = editingTxn?.is_credit_card || false
+  let isShopee = editingTxn?.is_shopee || false
 
   const itemIndex = buildItemIndex(txns, recurring)
 
@@ -97,6 +98,10 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
         <label class="checkbox-row" style="margin-top:16px">
           <input type="checkbox" id="isCreditCard" ${isCreditCard ? 'checked' : ''} />
           <span>💳 Paid via credit card</span>
+        </label>
+        <label class="checkbox-row" style="margin-top:8px">
+          <input type="checkbox" id="isShopee" ${isShopee ? 'checked' : ''} />
+          <span>🛍️ Bought via Shopee</span>
         </label>
       ` : ''}
 
@@ -189,6 +194,7 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
     wireDmyDateField(container, 'dateInput', v => { date = v })
     container.querySelector('#notesInput').oninput = e => { notes = e.target.value }
     container.querySelector('#isCreditCard')?.addEventListener('change', e => { isCreditCard = e.target.checked })
+    container.querySelector('#isShopee')?.addEventListener('change', e => { isShopee = e.target.checked })
     container.querySelector('#saveAsRecurring').onchange = e => { saveAsRecurring = e.target.checked; draw() }
     container.querySelectorAll('#recurModeToggle button').forEach(btn => {
       btn.onclick = () => { recurMode = btn.dataset.mode; draw() }
@@ -228,6 +234,7 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
         notes: notes || null,
         budget_type: type === 'expense' ? categoryBudgetType(category) : null,
         is_credit_card: type === 'expense' ? isCreditCard : false,
+        is_shopee: type === 'expense' ? isShopee : false,
       }
       if (isEdit) {
         await updateTransaction(editingTxn.id, payload)
@@ -247,6 +254,7 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
             next_due: recurMode === 'auto' ? advanceDate(date, recurFrequency) : null,
             active: true,
             is_credit_card: type === 'expense' ? isCreditCard : false,
+        is_shopee: type === 'expense' ? isShopee : false,
           })
           msg += ' · saved as repeat purchase'
         } catch (e) {

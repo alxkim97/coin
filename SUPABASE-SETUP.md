@@ -147,6 +147,17 @@ alter table coin_recurring add column if not exists is_credit_card boolean not n
 
 Lets a repeat purchase (Settings → Repeat Purchases, or the checkbox on Add Transaction) carry the same flag, so transactions it auto-posts show the 💳 badge too.
 
+## Adding the Shopee flag (2026-08-18)
+
+Run this once — additive, existing rows default to `false`:
+
+```sql
+alter table coin_transactions add column if not exists is_shopee boolean not null default false;
+alter table coin_recurring add column if not exists is_shopee boolean not null default false;
+```
+
+Marks whether an expense was bought via Shopee, same pattern as the credit-card flag. Toggle it from the "Bought via Shopee" checkbox on Add/Edit Transaction and on Repeat Purchases; a 🛍️ shows next to flagged transactions in History, and a repeat purchase carries the flag through to whatever it auto-posts.
+
 ## One-time data migration
 
 To bring over your existing 1,416 transactions from Ledger's `manual logs/ledger-import-all.json`, see `scripts/migrate.js` in this repo.

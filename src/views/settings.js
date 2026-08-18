@@ -240,7 +240,7 @@ export function renderSettings(container, opts) {
   }
 
   container.querySelector('#addRecurringBtn')?.addEventListener('click', () => {
-    recurringForm = { id: null, type: 'expense', category: null, subcategory: '', amount: '', mode: 'auto', frequency: 'monthly', next_due: todayISO(), is_credit_card: false }
+    recurringForm = { id: null, type: 'expense', category: null, subcategory: '', amount: '', mode: 'auto', frequency: 'monthly', next_due: todayISO(), is_credit_card: false, is_shopee: false }
     renderSettings(container, opts)
   })
   container.querySelectorAll('.recurring-edit').forEach(btn => {
@@ -251,6 +251,7 @@ export function renderSettings(container, opts) {
         id: r.id, type: r.type, category: r.category, subcategory: r.subcategory || '',
         amount: String(r.amount), mode: r.mode, frequency: r.frequency || 'monthly', next_due: r.next_due || todayISO(),
         is_credit_card: r.is_credit_card || false,
+        is_shopee: r.is_shopee || false,
       }
       renderSettings(container, opts)
     }
@@ -360,6 +361,10 @@ function renderRecurringForm(form) {
           <input type="checkbox" id="recIsCreditCard" ${form.is_credit_card ? 'checked' : ''} />
           <span>💳 Paid via credit card</span>
         </label>
+        <label class="checkbox-row" style="margin-top:8px">
+          <input type="checkbox" id="recIsShopee" ${form.is_shopee ? 'checked' : ''} />
+          <span>🛍️ Bought via Shopee</span>
+        </label>
       ` : ''}
 
       <div style="display:flex;gap:10px;margin-top:16px">
@@ -388,6 +393,7 @@ function wireRecurringForm(container, opts) {
   container.querySelector('#recFrequency')?.addEventListener('change', e => { recurringForm.frequency = e.target.value })
   if (container.querySelector('#recNextDue')) wireDmyDateField(container, 'recNextDue', v => { recurringForm.next_due = v })
   container.querySelector('#recIsCreditCard')?.addEventListener('change', e => { recurringForm.is_credit_card = e.target.checked })
+  container.querySelector('#recIsShopee')?.addEventListener('change', e => { recurringForm.is_shopee = e.target.checked })
 
   container.querySelector('#recCancel').onclick = () => { recurringForm = null; renderSettings(container, opts) }
 
@@ -409,6 +415,7 @@ function wireRecurringForm(container, opts) {
         next_due: recurringForm.mode === 'auto' ? recurringForm.next_due : null,
         active: true,
         is_credit_card: recurringForm.type === 'expense' ? !!recurringForm.is_credit_card : false,
+        is_shopee: recurringForm.type === 'expense' ? !!recurringForm.is_shopee : false,
       }
       if (recurringForm.id) {
         await updateRecurring(recurringForm.id, payload)
