@@ -42,6 +42,12 @@ async function loadData() {
     state.budgets = cached.budgets
     toast('Offline — showing your last synced data')
   }
+  try {
+    state.recurring = await fetchRecurring()
+  } catch {
+    // table may not exist yet on an older install, or we're offline — keep
+    // whatever's already in memory rather than failing the whole refresh
+  }
 }
 
 async function loadNetWorth() {
