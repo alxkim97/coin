@@ -363,6 +363,11 @@ function renderRecurringForm(form) {
         ` : `
           <label>Number of Payments (optional)</label>
           <input id="recInstallmentsTotal" type="number" inputmode="numeric" min="1" placeholder="Leave blank if ongoing" value="${form.installments_total != null ? form.installments_total : ''}" />
+          ${!form.id ? `
+            <label>Already Paid (optional)</label>
+            <input id="recInstallmentsPaid" type="number" inputmode="numeric" min="0" placeholder="0" value="${form.installments_paid || ''}" />
+            <div style="font-size:12px;color:var(--text2);margin-top:4px">Set this if you're logging an installment plan that's already partway through — e.g. 3 if you've paid 3 of 10 outside Coin so far.</div>
+          ` : ''}
           <div style="font-size:12px;color:var(--text2);margin-top:8px">Shows up under Bills Due on the Dashboard once due — you confirm the amount and mark it paid, nothing posts on its own.${form.installments_total ? ` Stops reminding after ${form.installments_total} payments (${form.installments_paid || 0} so far).` : ' Leave the payment count blank for something ongoing, like rent — set it (e.g. 10) for a fixed-term installment that should stop itself.'}</div>
         `}
       ` : `
@@ -407,6 +412,9 @@ function wireRecurringForm(container, opts) {
   if (container.querySelector('#recNextDue')) wireDmyDateField(container, 'recNextDue', v => { recurringForm.next_due = v })
   container.querySelector('#recInstallmentsTotal')?.addEventListener('input', e => {
     recurringForm.installments_total = e.target.value === '' ? null : parseInt(e.target.value, 10)
+  })
+  container.querySelector('#recInstallmentsPaid')?.addEventListener('input', e => {
+    recurringForm.installments_paid = e.target.value === '' ? 0 : parseInt(e.target.value, 10)
   })
   container.querySelector('#recIsCreditCard')?.addEventListener('change', e => { recurringForm.is_credit_card = e.target.checked })
   container.querySelector('#recIsShopee')?.addEventListener('change', e => { recurringForm.is_shopee = e.target.checked })
