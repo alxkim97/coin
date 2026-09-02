@@ -179,7 +179,7 @@ function render() {
       editingTxn: state.editingTxn,
       recurring: state.recurring,
       txns: state.txns,
-      onSaved: () => refreshAndRender('transactions'),
+      onSaved: (stayOnAdd) => refreshAndRender(stayOnAdd ? undefined : 'transactions'),
     })
   } else if (state.view === 'analysis') {
     renderAnalysis(screen, {

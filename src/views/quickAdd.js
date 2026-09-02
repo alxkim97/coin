@@ -126,6 +126,7 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
 
       <div style="margin-top:22px;display:flex;flex-direction:column;gap:10px">
         <button class="btn" id="saveBtn">${isEdit ? 'Save Changes' : 'Add Transaction'}</button>
+        ${!isEdit ? '<button class="btn secondary" id="saveAndAddBtn">Save & Add Another</button>' : ''}
         ${isEdit ? '<button class="btn secondary" id="cancelBtn">Cancel</button>' : ''}
         ${isEdit ? '<button class="btn danger" id="deleteBtn">Delete</button>' : ''}
       </div>
@@ -200,7 +201,8 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
       btn.onclick = () => { recurMode = btn.dataset.mode; draw() }
     })
     container.querySelector('#recurFrequency')?.addEventListener('change', e => { recurFrequency = e.target.value })
-    container.querySelector('#saveBtn').onclick = save
+    container.querySelector('#saveBtn').onclick = () => save(false)
+    container.querySelector('#saveAndAddBtn')?.addEventListener('click', () => save(true))
     container.querySelector('#cancelBtn')?.addEventListener('click', () => onSaved())
     container.querySelector('#deleteBtn')?.addEventListener('click', async () => {
       const ok = await confirmDialog('Delete this transaction?', 'Delete', true)
@@ -217,13 +219,15 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
     if (!isEdit) container.querySelector('#amountInput').focus()
   }
 
-  async function save() {
+  async function save(stayOnAdd) {
     const amt = parseFloat(amount)
     if (!amt || amt <= 0) { toast('Enter a valid amount'); return }
     if (!category) { toast('Pick a category'); return }
-    const btn = container.querySelector('#saveBtn')
+    const btn = container.querySelector(stayOnAdd ? '#saveAndAddBtn' : '#saveBtn')
+    const otherBtn = container.querySelector(stayOnAdd ? '#saveBtn' : '#saveAndAddBtn')
     btn.disabled = true
     btn.textContent = 'Saving…'
+    if (otherBtn) otherBtn.disabled = true
     try {
       const payload = {
         type,
@@ -261,12 +265,13 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
           msg += ' — but repeat purchase setup failed'
         }
       }
-      toast(msg)
-      onSaved()
+      toast(stayOnAdd ? `${msg} · ready for the next one` : msg)
+      onSaved(stayOnAdd)
     } catch (e) {
       toast(e.message || 'Failed to save')
       btn.disabled = false
-      btn.textContent = isEdit ? 'Save Changes' : 'Add Transaction'
+      btn.textContent = stayOnAdd ? 'Save & Add Another' : (isEdit ? 'Save Changes' : 'Add Transaction')
+      if (otherBtn) otherBtn.disabled = false
     }
   }
 

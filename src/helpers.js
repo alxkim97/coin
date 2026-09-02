@@ -1,3 +1,19 @@
+// Lets an amount field take "500000+3507.34" instead of making you do the
+// math first — handy when one account line is really two sub-accounts you
+// want combined. Only ever reaches Function() after the charset check below
+// passes, so nothing but digits/operators/parens/whitespace can execute.
+export function evalMoneyExpr(str) {
+  const s = String(str ?? '').trim()
+  if (!s) return NaN
+  if (!/^[0-9+\-*/().\s]+$/.test(s)) return NaN
+  try {
+    const result = Function(`"use strict"; return (${s})`)()
+    return typeof result === 'number' && isFinite(result) ? result : NaN
+  } catch {
+    return NaN
+  }
+}
+
 export function formatMoney(n) {
   const v = Number(n) || 0
   return '฿' + v.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })

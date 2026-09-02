@@ -1,5 +1,5 @@
 import { addNetWorth } from './supabase.js'
-import { toast, todayISO, escapeHtml, formatMoney, dmyDateFieldHtml, wireDmyDateField } from './helpers.js'
+import { toast, todayISO, escapeHtml, formatMoney, dmyDateFieldHtml, wireDmyDateField, evalMoneyExpr } from './helpers.js'
 import { latestAccountValues } from './analysisData.js'
 
 // Pre-fills from every account's latest known value across ALL check-ins —
@@ -40,7 +40,7 @@ export function openNetWorthQuickLog({ networth, onSaved }) {
                 <option value="invested" ${it.category === 'invested' ? 'selected' : ''}>Invested</option>
                 <option value="insurance" ${it.category === 'insurance' ? 'selected' : ''}>Insurance</option>
               </select>
-              <input class="nwItemValue" type="number" inputmode="decimal" placeholder="${it.lastValue != null ? escapeHtml(formatMoney(it.lastValue)) : '0'}" value="${escapeHtml(it.value)}" />
+              <input class="nwItemValue" type="text" inputmode="decimal" placeholder="${it.lastValue != null ? escapeHtml(formatMoney(it.lastValue)) : 'e.g. 500000+3507.34'}" value="${escapeHtml(it.value)}" />
               <button class="nwItemRemove" type="button" ${items.length <= 1 ? 'disabled' : ''}>✕</button>
             </div>
           `).join('')}
@@ -70,6 +70,14 @@ export function openNetWorthQuickLog({ networth, onSaved }) {
       row.querySelector('.nwItemCategory').onchange = e => { items[i].category = e.target.value }
       row.querySelector('.nwItemValue').oninput = e => { items[i].value = e.target.value }
       row.querySelector('.nwItemValue').onkeydown = e => { if (e.key === 'Enter') save() }
+      // collapse an expression like "500000+3507.34" down to its total as
+      // soon as you tab/click away — confirms it parsed the way you meant
+      row.querySelector('.nwItemValue').onblur = e => {
+        const raw = e.target.value.trim()
+        if (!/[+\-*/]/.test(raw)) return
+        const evaluated = evalMoneyExpr(raw)
+        if (!isNaN(evaluated)) { e.target.value = String(evaluated); items[i].value = String(evaluated) }
+      }
       row.querySelector('.nwItemRemove').onclick = () => { items.splice(i, 1); render() }
     })
 
@@ -84,10 +92,12 @@ export function openNetWorthQuickLog({ networth, onSaved }) {
   async function save() {
     // a blank value means "skip this account this time," not "set it to 0" —
     // only rows the user actually typed a number into get saved
+    const invalidRow = items.find(it => it.name.trim() && it.value !== '' && isNaN(evalMoneyExpr(it.value)))
+    if (invalidRow) { toast(`Can't work out "${invalidRow.value}" for ${invalidRow.name.trim()}`); return }
     const cleaned = items
       .map(it => ({ name: it.name.trim(), category: it.category, value: it.value }))
       .filter(it => it.name && it.value !== '')
-      .map(it => ({ name: it.name, category: it.category, value: parseFloat(it.value) || 0 }))
+      .map(it => ({ name: it.name, category: it.category, value: evalMoneyExpr(it.value) }))
     if (!date) { toast('Pick a date'); return }
     if (!cleaned.length) { toast('Enter at least one balance'); return }
     const btn = overlay.querySelector('#nwqSave')
