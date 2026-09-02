@@ -1,14 +1,16 @@
-import { formatMoney, rangeLabel, rangeWindow, escapeHtml, effectiveDate, formatDateDMY } from '../helpers.js'
-import { BUDGET_TYPE_ORDER, EXPENSE_CATEGORIES } from '../categories.js'
+import { formatMoney, rangeLabel, rangeWindow, escapeHtml, effectiveDate, formatDateDMY, todayISO } from '../helpers.js'
+import { BUDGET_TYPE_ORDER, EXPENSE_CATEGORIES, CATEGORY_ICONS } from '../categories.js'
 import { getOrder, setOrder, getCollapsed, toggleCollapsed } from '../dashboardLayout.js'
 import { computeCurrentLoggingStreak, computeBudgetStreak } from '../achievements.js'
 import { openNetWorthQuickLog } from '../netWorthQuickLog.js'
 import { netWorthTimeline } from '../analysisData.js'
+import { billsDue } from '../recurringReminders.js'
+import { openMarkPaidDialog } from '../markPaidDialog.js'
 
 const RANGES = [1, 3, 6, 12]
 
 export function renderDashboard(container, opts) {
-  const { txns, budgets, year, month, range, onMonthChange, onRangeChange, networth, onNetWorthChanged } = opts
+  const { txns, budgets, year, month, range, onMonthChange, onRangeChange, networth, onNetWorthChanged, recurring, onBillsChanged } = opts
   const { from, to } = rangeWindow(year, month, range)
   const rangeTxns = txns.filter(t => { const d = effectiveDate(t); return d >= from && d <= to })
 
@@ -90,6 +92,10 @@ export function renderDashboard(container, opts) {
       title: 'Net Worth',
       body: renderNetWorthWidgetBody(networth),
     },
+    bills: {
+      title: 'Bills Due',
+      body: renderBillsDueWidgetBody(recurring),
+    },
   }
 
   const order = getOrder()
@@ -150,6 +156,13 @@ export function renderDashboard(container, opts) {
 
   widgetsEl.querySelector('[data-widget="networth"] .networth-widget-body')?.addEventListener('click', () => {
     openNetWorthQuickLog({ networth, onSaved: onNetWorthChanged })
+  })
+
+  widgetsEl.querySelectorAll('.bill-mark-paid').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const item = (recurring || []).find(r => r.id === btn.dataset.id)
+      if (item) openMarkPaidDialog({ item, onSaved: onBillsChanged })
+    })
   })
 }
 
@@ -225,6 +238,27 @@ function renderNetWorthWidgetBody(networth) {
       </div>
     </div>
   `
+}
+
+function renderBillsDueWidgetBody(recurring) {
+  const due = billsDue(recurring)
+  if (!due.length) return '<div class="empty-state">Nothing due right now.</div>'
+  const today = todayISO()
+  return due.map(r => {
+    const overdue = r.next_due < today
+    const progress = r.installments_total ? ` · ${r.installments_paid || 0} of ${r.installments_total} paid` : ''
+    return `
+      <div class="bill-row">
+        <div class="bill-icon">${CATEGORY_ICONS[r.category] || '💵'}</div>
+        <div class="bill-main">
+          <div class="bill-name">${escapeHtml(r.subcategory || r.category)}</div>
+          <div class="bill-meta ${overdue ? 'overdue' : ''}">${overdue ? 'Overdue' : 'Due'} ${formatDateDMY(r.next_due)}${progress}</div>
+        </div>
+        <div class="bill-amt">${formatMoney(r.amount)}</div>
+        <button class="btn bill-mark-paid" data-id="${r.id}">Mark Paid</button>
+      </div>
+    `
+  }).join('')
 }
 
 function widgetRowHtml(id, def, isCollapsed) {

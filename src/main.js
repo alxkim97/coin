@@ -170,6 +170,8 @@ function render() {
       onRangeChange: setRange,
       networth: state.networth,
       onNetWorthChanged: async () => { await loadNetWorth(); render() },
+      recurring: state.recurring,
+      onBillsChanged: async () => { await loadData(); render() },
     })
   } else if (state.view === 'transactions') {
     renderTransactions(screen, {

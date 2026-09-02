@@ -103,7 +103,11 @@ export function renderSettings(container, opts) {
           <div class="recurring-icon">${CATEGORY_ICONS[r.category] || '💵'}</div>
           <div class="recurring-main">
             <div class="recurring-name">${escapeHtml(r.category)}${r.subcategory ? ' · ' + escapeHtml(r.subcategory) : ''}</div>
-            <div class="recurring-meta">${r.mode === 'auto' ? `Auto · ${frequencyLabel(r.frequency)} · next ${formatDateDMY(r.next_due)}` : 'Quick pick'}${r.active ? '' : ' · paused'}</div>
+            <div class="recurring-meta">${
+              r.mode === 'auto' ? `Auto · ${frequencyLabel(r.frequency)} · next ${formatDateDMY(r.next_due)}`
+              : r.mode === 'remind' ? `Remind · ${frequencyLabel(r.frequency)} · next ${formatDateDMY(r.next_due)}${r.installments_total ? ` · ${r.installments_paid || 0} of ${r.installments_total} paid` : ''}`
+              : 'Quick pick'
+            }${r.active ? '' : ' · paused'}</div>
           </div>
           <div class="recurring-amt">${formatMoney(r.amount)}</div>
           <button class="recurring-edit" data-id="${r.id}">Edit</button>
@@ -240,7 +244,7 @@ export function renderSettings(container, opts) {
   }
 
   container.querySelector('#addRecurringBtn')?.addEventListener('click', () => {
-    recurringForm = { id: null, type: 'expense', category: null, subcategory: '', amount: '', mode: 'auto', frequency: 'monthly', next_due: todayISO(), is_credit_card: false, is_shopee: false }
+    recurringForm = { id: null, type: 'expense', category: null, subcategory: '', amount: '', mode: 'auto', frequency: 'monthly', next_due: todayISO(), installments_total: null, installments_paid: 0, is_credit_card: false, is_shopee: false }
     renderSettings(container, opts)
   })
   container.querySelectorAll('.recurring-edit').forEach(btn => {
@@ -250,6 +254,8 @@ export function renderSettings(container, opts) {
       recurringForm = {
         id: r.id, type: r.type, category: r.category, subcategory: r.subcategory || '',
         amount: String(r.amount), mode: r.mode, frequency: r.frequency || 'monthly', next_due: r.next_due || todayISO(),
+        installments_total: r.installments_total ?? null,
+        installments_paid: r.installments_paid || 0,
         is_credit_card: r.is_credit_card || false,
         is_shopee: r.is_shopee || false,
       }
@@ -341,17 +347,24 @@ function renderRecurringForm(form) {
       <label>Mode</label>
       <div class="toggle-row" id="recModeToggle">
         <button data-mode="auto" class="${form.mode === 'auto' ? 'active' : ''}">Automatic</button>
+        <button data-mode="remind" class="${form.mode === 'remind' ? 'active' : ''}">Remind</button>
         <button data-mode="quick" class="${form.mode === 'quick' ? 'active' : ''}">Quick Pick</button>
       </div>
 
-      ${form.mode === 'auto' ? `
+      ${form.mode === 'auto' || form.mode === 'remind' ? `
         <label>Frequency</label>
         <select id="recFrequency">
           ${FREQUENCIES.map(f => `<option value="${f}" ${form.frequency === f ? 'selected' : ''}>${frequencyLabel(f)}</option>`).join('')}
         </select>
         <label>Next Due</label>
         ${dmyDateFieldHtml('recNextDue', form.next_due)}
-        <div style="font-size:12px;color:var(--text2);margin-top:8px">Posts automatically as a real transaction the next time you open Coin on or after this date.</div>
+        ${form.mode === 'auto' ? `
+          <div style="font-size:12px;color:var(--text2);margin-top:8px">Posts automatically as a real transaction the next time you open Coin on or after this date.</div>
+        ` : `
+          <label>Number of Payments (optional)</label>
+          <input id="recInstallmentsTotal" type="number" inputmode="numeric" min="1" placeholder="Leave blank if ongoing" value="${form.installments_total != null ? form.installments_total : ''}" />
+          <div style="font-size:12px;color:var(--text2);margin-top:8px">Shows up under Bills Due on the Dashboard once due — you confirm the amount and mark it paid, nothing posts on its own.${form.installments_total ? ` Stops reminding after ${form.installments_total} payments (${form.installments_paid || 0} so far).` : ' Leave the payment count blank for something ongoing, like rent — set it (e.g. 10) for a fixed-term installment that should stop itself.'}</div>
+        `}
       ` : `
         <div style="font-size:12px;color:var(--text2);margin-top:8px">Shows as a one-tap shortcut on the Add screen — nothing posts until you tap it there.</div>
       `}
@@ -392,6 +405,9 @@ function wireRecurringForm(container, opts) {
   })
   container.querySelector('#recFrequency')?.addEventListener('change', e => { recurringForm.frequency = e.target.value })
   if (container.querySelector('#recNextDue')) wireDmyDateField(container, 'recNextDue', v => { recurringForm.next_due = v })
+  container.querySelector('#recInstallmentsTotal')?.addEventListener('input', e => {
+    recurringForm.installments_total = e.target.value === '' ? null : parseInt(e.target.value, 10)
+  })
   container.querySelector('#recIsCreditCard')?.addEventListener('change', e => { recurringForm.is_credit_card = e.target.checked })
   container.querySelector('#recIsShopee')?.addEventListener('change', e => { recurringForm.is_shopee = e.target.checked })
 
@@ -411,8 +427,10 @@ function wireRecurringForm(container, opts) {
         subcategory: recurringForm.subcategory || null,
         amount: amt,
         mode: recurringForm.mode,
-        frequency: recurringForm.mode === 'auto' ? recurringForm.frequency : null,
-        next_due: recurringForm.mode === 'auto' ? recurringForm.next_due : null,
+        frequency: recurringForm.mode === 'auto' || recurringForm.mode === 'remind' ? recurringForm.frequency : null,
+        next_due: recurringForm.mode === 'auto' || recurringForm.mode === 'remind' ? recurringForm.next_due : null,
+        installments_total: recurringForm.mode === 'remind' ? (recurringForm.installments_total || null) : null,
+        installments_paid: recurringForm.installments_paid || 0,
         active: true,
         is_credit_card: recurringForm.type === 'expense' ? !!recurringForm.is_credit_card : false,
         is_shopee: recurringForm.type === 'expense' ? !!recurringForm.is_shopee : false,
