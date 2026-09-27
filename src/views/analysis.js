@@ -1,7 +1,8 @@
 import { Chart, registerables } from 'chart.js'
-import { dailySpend, categoryBreakdown, monthlyRollup, heatmapData, generateInsights, computeProjection, computePersonalRecords } from '../analysisData.js'
+import { dailySpend, categoryBreakdown, monthlyRollup, heatmapData, generateInsights, computeProjection, computePersonalRecords, upcomingBills } from '../analysisData.js'
 import { getAchievementDefs } from '../achievements.js'
-import { formatMoney, localISO, toast, formatDateDMY } from '../helpers.js'
+import { CATEGORY_ICONS } from '../categories.js'
+import { formatMoney, localISO, toast, formatDateDMY, escapeHtml } from '../helpers.js'
 import { isPrivacyMode, setPrivacyMode, privacyToggleHtml } from '../privacy.js'
 import { isDesktopView } from '../platform.js'
 import { renderInvestmentDepth, renderNetWorthSummaryCard } from './analysisInvestments.js'
@@ -68,6 +69,9 @@ export function renderAnalysis(container, opts) {
       <div class="privacy-overlay">🔒 Balances hidden</div>
     </div>
 
+    <h2>Cashflow Forecast (Next 60 Days)</h2>
+    <div class="card"><div id="cashflowForecast"></div></div>
+
     <h2>Personal Records</h2>
     <div class="card"><div class="record-grid" id="personalRecords"></div></div>
 
@@ -91,6 +95,7 @@ export function renderAnalysis(container, opts) {
   if (isDesktopView()) renderInvestmentDepth(investmentSection, networth || [])
   else renderNetWorthSummaryCard(investmentSection, networth || [])
   renderProjectionSection(container, txns, networth || [])
+  renderCashflowForecast(container, recurring)
   renderPersonalRecords(container, txns)
   renderAchievements(container, txns, budgets, recurring)
 
@@ -131,6 +136,29 @@ function renderPersonalRecords(container, txns) {
       <div class="record-date">${r.date ? formatDateDMY(r.date) : (r.dateLabel || '')}</div>
     </div>
   `).join('')
+}
+
+function renderCashflowForecast(container, recurring) {
+  const bills = upcomingBills(recurring, 60)
+  const el = container.querySelector('#cashflowForecast')
+  if (!bills.length) {
+    el.innerHTML = '<div class="empty-state">No upcoming bills in the next 60 days.</div>'
+    return
+  }
+  const total = bills[bills.length - 1].runningTotal
+  el.innerHTML = `
+    <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Bills only, not a full balance projection — ${formatMoney(total)} total due over the next 60 days.</div>
+    ${bills.map(b => `
+      <div class="bill-row">
+        <div class="bill-icon">${CATEGORY_ICONS[b.category] || '💵'}</div>
+        <div class="bill-main">
+          <div class="bill-name">${escapeHtml(b.name)}</div>
+          <div class="bill-meta">${formatDateDMY(b.date)}</div>
+        </div>
+        <div class="bill-amt">${formatMoney(b.amount)}</div>
+      </div>
+    `).join('')}
+  `
 }
 
 function renderProjectionSection(container, txns, networth) {

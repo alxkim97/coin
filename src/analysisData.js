@@ -1,4 +1,4 @@
-import { localISO, formatMoney, formatDateDMY, sortByDateAsc } from './helpers.js'
+import { localISO, formatMoney, formatDateDMY, sortByDateAsc, todayISO, advanceDate } from './helpers.js'
 
 function daysAgo(n) {
   const d = new Date()
@@ -106,6 +106,39 @@ export function latestAccountValues(networth) {
     }
   }
   return [...byName.values()]
+}
+
+// Forward list of upcoming recurring occurrences over the next `days` —
+// 'auto' and 'remind' modes only ('quick' items have no schedule at all, so
+// there's nothing to forecast). Deliberately bills-only, not a full balance
+// projection: computeProjection already exists for that and combines
+// assumed income timing, which isn't tracked precisely enough here to
+// justify claiming a real running balance. An overdue item's stale
+// next_due is still walked forward via advanceDate to find its next real
+// occurrence in-window — same catch-up logic processRecurring uses when it
+// actually posts — but the overdue occurrence itself is left out here since
+// billsDue() (recurringReminders.js) already surfaces that separately.
+export function upcomingBills(recurring, days = 60) {
+  const today = todayISO()
+  const end = new Date()
+  end.setDate(end.getDate() + days)
+  const endStr = localISO(end)
+
+  const occurrences = []
+  for (const r of (recurring || [])) {
+    if (!r.active || !r.next_due || !r.frequency) continue
+    if (r.mode !== 'auto' && r.mode !== 'remind') continue
+    let due = r.next_due
+    while (due <= endStr) {
+      if (due >= today) occurrences.push({ id: r.id, name: r.subcategory || r.category, category: r.category, amount: Number(r.amount), date: due })
+      due = advanceDate(due, r.frequency)
+    }
+  }
+  occurrences.sort((a, b) => a.date.localeCompare(b.date))
+
+  let runningTotal = 0
+  for (const occ of occurrences) { runningTotal += occ.amount; occ.runningTotal = runningTotal }
+  return occurrences
 }
 
 // Current progress toward a savings goal — either its own manually-updated
