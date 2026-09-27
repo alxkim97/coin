@@ -1,4 +1,4 @@
-import { localISO, formatMoney, formatDateDMY } from './helpers.js'
+import { localISO, formatMoney, formatDateDMY, sortByDateAsc } from './helpers.js'
 
 function daysAgo(n) {
   const d = new Date()
@@ -75,7 +75,7 @@ export function heatmapData(txns, days = 371) {
 // This walks every check-in in date order and keeps the latest known value
 // per account name, so partial updates accumulate instead of overwriting.
 export function latestAccountValues(networth) {
-  const sorted = [...(networth || [])].sort((a, b) => a.date.localeCompare(b.date) || (a.created_at || '').localeCompare(b.created_at || ''))
+  const sorted = sortByDateAsc(networth || [])
   const byName = new Map()
   for (const checkin of sorted) {
     for (const item of (checkin.items || [])) {
@@ -92,7 +92,7 @@ export function latestAccountValues(networth) {
 // as two separate check-ins the same day still produces a combined total on
 // the second point instead of a misleading dip back to just one half.
 export function netWorthTimeline(networth) {
-  const sorted = [...(networth || [])].sort((a, b) => a.date.localeCompare(b.date) || (a.created_at || '').localeCompare(b.created_at || ''))
+  const sorted = sortByDateAsc(networth || [])
   const byName = new Map()
   const points = []
   for (const checkin of sorted) {

@@ -103,28 +103,30 @@ autoUpdater.on('error', (err) => {
   console.error('autoUpdater error:', err)
 })
 
+// checkInProgress guards BOTH manual and periodic checks against the same
+// shared autoUpdater event emitter, so a background tick firing mid-click
+// can't steal the listeners registered for the user's own manual check (and
+// vice versa). It's reset via .finally() on the check promise itself, not
+// only from the event handlers below — a rejection that doesn't also emit
+// 'error' used to leave it stuck true forever, silently disabling every
+// future "Check for Updates" click until restart.
 let checkInProgress = false
 function checkForUpdates(manual) {
   if (isDev) return updateDownloaded ? 'downloaded' : 'skipped-dev'
-  if (!manual) {
-    autoUpdater.checkForUpdates().catch(() => {})
-    return
-  }
   if (updateDownloaded) {
-    dialog.showMessageBox({ type: 'info', title: 'Coin', message: 'Update already downloaded — restart Coin to install it.' })
+    if (manual) dialog.showMessageBox({ type: 'info', title: 'Coin', message: 'Update already downloaded — restart Coin to install it.' })
     return
   }
-  if (checkInProgress) return // a click already in flight — let it finish rather than stacking duplicate dialogs
+  if (checkInProgress) return // a check is already in flight — let it finish rather than racing a second one
   checkInProgress = true
   const cleanup = () => {
-    checkInProgress = false
     autoUpdater.off('update-not-available', onNotAvailable)
     autoUpdater.off('update-available', onAvailable)
     autoUpdater.off('error', onError)
   }
   const onAvailable = (info) => {
     cleanup()
-    dialog.showMessageBox({
+    if (manual) dialog.showMessageBox({
       type: 'info',
       title: 'Coin',
       message: `Update found: Coin ${info.version}`,
@@ -133,11 +135,11 @@ function checkForUpdates(manual) {
   }
   const onNotAvailable = () => {
     cleanup()
-    dialog.showMessageBox({ type: 'info', title: 'Coin', message: "You're up to date." })
+    if (manual) dialog.showMessageBox({ type: 'info', title: 'Coin', message: "You're up to date." })
   }
   const onError = (err) => {
     cleanup()
-    dialog.showMessageBox({
+    if (manual) dialog.showMessageBox({
       type: 'error',
       title: 'Update check failed',
       message: 'Could not check for updates.',
@@ -147,7 +149,9 @@ function checkForUpdates(manual) {
   autoUpdater.once('update-not-available', onNotAvailable)
   autoUpdater.once('update-available', onAvailable)
   autoUpdater.once('error', onError)
-  autoUpdater.checkForUpdates().catch(() => {})
+  autoUpdater.checkForUpdates()
+    .catch(() => {}) // surfaced via the 'error' event above too — this just avoids an unhandled-rejection log
+    .finally(() => { checkInProgress = false })
 }
 
 ipcMain.handle('updater:check', () => checkForUpdates(true))

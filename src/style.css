@@ -629,9 +629,10 @@ label:first-child { margin-top: 0; }
 .privacy-wrap { position: relative; }
 .privacy-wrap.active .card { filter: blur(10px); user-select: none; pointer-events: none; }
 .privacy-overlay {
-  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
   font-size: 13px; font-weight: 600; color: var(--text2);
 }
+.privacy-wrap.active .privacy-overlay { display: flex; }
 
 /* add screen: frequently-used quick chips */
 .quick-chip-row {

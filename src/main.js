@@ -55,6 +55,21 @@ async function loadNetWorth() {
 // Posts any 'auto' repeat purchase whose next_due date has arrived as a real
 // transaction, then advances next_due — looping per item in case the app was
 // closed across more than one period (e.g. monthly rent, two months unopened).
+// addTransaction for a period has already succeeded by the time this runs —
+// a transient failure here (unlike addTransaction failing) would leave
+// next_due stale and cause that same period to be reposted as a duplicate on
+// the next launch, so it's worth a couple of retries before giving up.
+async function updateRecurringWithRetry(id, patch, attempts = 3) {
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      return await updateRecurring(id, patch)
+    } catch (e) {
+      if (i === attempts) throw e
+      await new Promise(r => setTimeout(r, 500 * i))
+    }
+  }
+}
+
 async function processRecurring() {
   try {
     state.recurring = await fetchRecurring()
@@ -87,7 +102,7 @@ async function processRecurring() {
         // persist progress after every period, not just at the end — if a
         // later period in this same item fails, we don't want the next
         // launch re-posting the ones that already succeeded as duplicates
-        await updateRecurring(r.id, { next_due: nextDue })
+        await updateRecurringWithRetry(r.id, { next_due: nextDue })
       }
     } catch (e) {
       failed = true

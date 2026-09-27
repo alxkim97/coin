@@ -117,8 +117,15 @@ export async function deleteRecurring(id) {
 
 export async function fetchNetWorth() {
   const { data, error } = await supa.from('coin_networth').select('*, items:coin_networth_items(*)').order('date', { ascending: true })
-  if (error) throw error
-  return data
+  if (!error) return data
+  // coin_networth_items may not exist yet on an install that only ran the
+  // first of the two migration steps — PostgREST fails the whole embedded
+  // join in that case (not per-row), which used to discard real,
+  // already-logged net-worth history along with it. Fall back to the
+  // checkin rows alone so cash/invested/date still show.
+  const { data: checkinsOnly, error: fallbackError } = await supa.from('coin_networth').select('*').order('date', { ascending: true })
+  if (fallbackError) throw error // the original error is more informative than the fallback's
+  return checkinsOnly.map(c => ({ ...c, items: null }))
 }
 
 // items: [{name, category: 'cash'|'invested', value}] — cash/invested on the

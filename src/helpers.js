@@ -23,6 +23,19 @@ export function todayISO() {
   return localISO(new Date())
 }
 
+// Sorts a list of {date, created_at?} records by date — used for net worth
+// check-ins, transactions, anything with a plain ISO date field. Same-date
+// entries break ties by created_at (when present) instead of leaving
+// same-day order to array insertion order, so "the latest entry" means the
+// same thing everywhere this is used rather than depending on which of the
+// four-plus copies of this comparator a given call site happened to have.
+export function sortByDateAsc(list) {
+  return [...list].sort((a, b) => a.date.localeCompare(b.date) || (a.created_at || '').localeCompare(b.created_at || ''))
+}
+export function sortByDateDesc(list) {
+  return [...list].sort((a, b) => b.date.localeCompare(a.date) || (b.created_at || '').localeCompare(a.created_at || ''))
+}
+
 // Average monthly spend per expense category over the trailing N months —
 // replaces a one-time hardcoded snapshot with something that stays current
 // on its own as you keep logging.

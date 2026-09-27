@@ -16,6 +16,15 @@ let prevUnlocked = new Set()
 
 const chartInstances = {}
 
+// Every chart render site used to hand-repeat "destroy the old instance,
+// then construct a new one" — skip the destroy once (easy to do, nothing
+// enforces it) and the old Chart.js instance leaks, redrawing on a detached
+// canvas. One helper makes that step mandatory instead of a convention.
+function renderChart(key, canvas, config) {
+  chartInstances[key]?.destroy()
+  chartInstances[key] = new Chart(canvas.getContext('2d'), config)
+}
+
 function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 }
@@ -52,7 +61,7 @@ export function renderAnalysis(container, opts) {
     <div class="top-bar" style="margin-top:6px"><h2 style="margin:0">Net Worth</h2>${privacyToggleHtml('privacyToggleNw')}</div>
     <div class="privacy-wrap${privacyOn ? ' active' : ''}">
       <div class="card"><div class="chart-box"><canvas id="networthChart"></canvas></div></div>
-      ${privacyOn ? '<div class="privacy-overlay">🔒 Balances hidden</div>' : ''}
+      <div class="privacy-overlay">🔒 Balances hidden</div>
     </div>
 
     <div class="top-bar" style="margin-top:6px"><h2 style="margin:0">Projection</h2>${privacyToggleHtml('privacyToggleProj')}</div>
@@ -63,7 +72,7 @@ export function renderAnalysis(container, opts) {
         <div class="chart-box"><canvas id="projChart"></canvas></div>
         <div class="proj-note" id="projNote"></div>
       </div>
-      ${privacyOn ? '<div class="privacy-overlay">🔒 Balances hidden</div>' : ''}
+      <div class="privacy-overlay">🔒 Balances hidden</div>
     </div>
 
     <h2>Personal Records</h2>
@@ -77,9 +86,21 @@ export function renderAnalysis(container, opts) {
     btn.onclick = () => { period = Number(btn.dataset.period); renderAnalysis(container, opts) }
   })
 
+  // Hiding balances is a pure CSS toggle (.privacy-wrap.active blurs the
+  // card) — it used to call renderAnalysis() here, which re-ran every
+  // analytics scan and destroyed/rebuilt all 5 charts just to flip a class,
+  // causing a visible stutter right when someone's about to show their screen.
   ;['privacyToggleNw', 'privacyToggleProj'].forEach(id => {
     const btn = container.querySelector('#' + id)
-    if (btn) btn.onclick = () => { setPrivacyMode(!isPrivacyMode()); renderAnalysis(container, opts) }
+    if (btn) btn.onclick = () => {
+      setPrivacyMode(!isPrivacyMode())
+      const on = isPrivacyMode()
+      container.querySelectorAll('.privacy-wrap').forEach(w => w.classList.toggle('active', on))
+      container.querySelectorAll('.privacy-toggle-btn').forEach(b => {
+        b.textContent = on ? '🙈' : '👁️'
+        b.title = on ? 'Show balances' : 'Hide balances'
+      })
+    }
   })
 
   renderTrendChart(container, txns)
@@ -112,7 +133,6 @@ function renderPersonalRecords(container, txns) {
 
 function renderNetWorthChart(container, networth) {
   const canvas = container.querySelector('#networthChart')
-  if (chartInstances.networth) chartInstances.networth.destroy()
   container.querySelector('#networthEmpty')?.remove()
 
   const timeline = netWorthTimeline(networth)
@@ -132,7 +152,7 @@ function renderNetWorthChart(container, networth) {
   const accent = cssVar('--accent')
   const hasInsurance = timeline.some(n => n.insurance > 0)
 
-  chartInstances.networth = new Chart(canvas.getContext('2d'), {
+  renderChart('networth', canvas, {
     type: 'line',
     data: {
       labels,
@@ -184,12 +204,11 @@ function renderProjectionSection(container, txns, networth) {
     ? ''
     : 'No net worth check-in yet — projection starts from ฿0. Add a check-in in Settings → Net Worth for a real starting point.'
 
-  if (chartInstances.projection) chartInstances.projection.destroy()
   const text3 = cssVar('--text3')
   const grid = cssVar('--chart-grid')
   const accent = cssVar('--accent')
 
-  chartInstances.projection = new Chart(container.querySelector('#projChart').getContext('2d'), {
+  renderChart('projection', container.querySelector('#projChart'), {
     type: 'line',
     data: {
       labels: proj.points.map(p => p.label),
@@ -244,8 +263,7 @@ function renderAchievements(container, txns, budgets, recurring) {
 function renderTrendChart(container, txns) {
   const points = dailySpend(txns, period)
   const avg = points.reduce((s, p) => s + p.amount, 0) / (points.length || 1)
-  const ctx = container.querySelector('#trendChart').getContext('2d')
-  if (chartInstances.trend) chartInstances.trend.destroy()
+  const canvas = container.querySelector('#trendChart')
 
   const accent = cssVar('--accent')
   const text3 = cssVar('--text3')
@@ -257,7 +275,7 @@ function renderTrendChart(container, txns) {
       : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   })
 
-  chartInstances.trend = new Chart(ctx, {
+  renderChart('trend', canvas, {
     type: 'line',
     data: {
       labels,
@@ -295,7 +313,6 @@ const DONUT_PALETTE = ['--chart-1', '--chart-2', '--chart-3', '--chart-4', '--ch
 function renderCategoryChart(container, txns) {
   const data = categoryBreakdown(txns, period)
   const canvas = container.querySelector('#categoryChart')
-  if (chartInstances.category) chartInstances.category.destroy()
   container.querySelector('#categoryEmpty')?.remove()
 
   if (!data.length) {
@@ -310,7 +327,7 @@ function renderCategoryChart(container, txns) {
   const surface = cssVar('--surface')
   const total = data.reduce((s, d) => s + d.amount, 0)
 
-  chartInstances.category = new Chart(canvas.getContext('2d'), {
+  renderChart('category', canvas, {
     type: 'doughnut',
     data: {
       labels: data.map(d => d.category),
@@ -333,14 +350,13 @@ function renderCategoryChart(container, txns) {
 
 function renderRollupChart(container, txns) {
   const rows = monthlyRollup(txns, 12)
-  if (chartInstances.rollup) chartInstances.rollup.destroy()
 
   const text3 = cssVar('--text3')
   const grid = cssVar('--chart-grid')
   const green = cssVar('--green')
   const red = cssVar('--red')
 
-  chartInstances.rollup = new Chart(container.querySelector('#rollupChart').getContext('2d'), {
+  renderChart('rollup', container.querySelector('#rollupChart'), {
     type: 'bar',
     data: {
       labels: rows.map(r => r.label),

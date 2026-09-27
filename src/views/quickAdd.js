@@ -1,8 +1,19 @@
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, categoryBudgetType, CATEGORY_ICONS } from '../categories.js'
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, categoryBudgetType, CATEGORY_ICONS, FREQUENCIES } from '../categories.js'
 import { addTransaction, updateTransaction, deleteTransaction, addRecurring } from '../supabase.js'
-import { todayISO, toast, confirmDialog, formatMoney, escapeHtml, advanceDate, frequencyLabel, dmyDateFieldHtml, wireDmyDateField } from '../helpers.js'
+import { todayISO, toast, confirmDialog, formatMoney, escapeHtml, advanceDate, frequencyLabel, dmyDateFieldHtml, wireDmyDateField, sortByDateDesc } from '../helpers.js'
 
-const FREQUENCIES = ['daily', 'weekly', 'monthly', 'quarterly', 'annually']
+// The transaction's own date can be freely backdated (backfilling an old
+// bill, say). Seeding next_due from a single advanceDate() off that date
+// left it in the past whenever the entry was backdated more than one period
+// — processRecurring's catch-up loop then fires on the very next launch and
+// posts one transaction per missed period, none of which the user asked
+// for. Fast-forward instead: first occurrence on or after today.
+function firstDueOnOrAfter(date, frequency) {
+  let due = advanceDate(date, frequency)
+  const today = todayISO()
+  while (due < today) due = advanceDate(due, frequency)
+  return due
+}
 
 // Builds a searchable "known items" list from vendor names you've actually used
 // before (transaction history) plus anything saved as a repeat purchase —
@@ -10,7 +21,7 @@ const FREQUENCIES = ['daily', 'weekly', 'monthly', 'quarterly', 'annually']
 // category/vendor/amount all fill in at once.
 function buildItemIndex(txns, recurring) {
   const map = new Map()
-  const sorted = [...(txns || [])].sort((a, b) => b.date.localeCompare(a.date))
+  const sorted = sortByDateDesc(txns || [])
   for (const t of sorted) {
     if (!t.subcategory) continue
     const key = `${t.type}::${t.subcategory.toLowerCase()}`
@@ -251,7 +262,7 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
             amount: amt,
             mode: recurMode,
             frequency: recurMode === 'auto' ? recurFrequency : null,
-            next_due: recurMode === 'auto' ? advanceDate(date, recurFrequency) : null,
+            next_due: recurMode === 'auto' ? firstDueOnOrAfter(date, recurFrequency) : null,
             active: true,
             is_credit_card: type === 'expense' ? isCreditCard : false,
         is_shopee: type === 'expense' ? isShopee : false,

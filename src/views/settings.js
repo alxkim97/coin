@@ -1,10 +1,10 @@
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, BUDGET_TYPE_ORDER, CATEGORY_ICONS } from '../categories.js'
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, BUDGET_TYPE_ORDER, CATEGORY_ICONS, FREQUENCIES } from '../categories.js'
 import { upsertBudget, signOut, addRecurring, updateRecurring, deleteRecurring, updateEmail, updateDisplayName, addNetWorth, deleteNetWorth } from '../supabase.js'
-import { toast, downloadFile, txnsToCsv, todayISO, formatMoney, confirmDialog, frequencyLabel, escapeHtml, computeSuggestedLimits, formatDateDMY, dmyDateFieldHtml, wireDmyDateField } from '../helpers.js'
+import { toast, downloadFile, txnsToCsv, todayISO, formatMoney, confirmDialog, frequencyLabel, escapeHtml, computeSuggestedLimits, formatDateDMY, dmyDateFieldHtml, wireDmyDateField, sortByDateDesc } from '../helpers.js'
 import { ACCENTS, getMode, setMode, getAccent, setAccent } from '../theme.js'
 import { isPrivacyMode, setPrivacyMode } from '../privacy.js'
-
-const FREQUENCIES = ['daily', 'weekly', 'monthly', 'quarterly', 'annually']
+import { latestAccountValues } from '../analysisData.js'
+import { seedNetWorthItems, netWorthItemRowsHtml, wireNetWorthItemRows, cleanNetWorthItems } from '../netWorthForm.js'
 
 // form state for the Repeat Purchases add/edit card — persists across the
 // recursive re-renders this file does after every small change (same pattern
@@ -116,7 +116,7 @@ export function renderSettings(container, opts) {
     ${networthForm ? renderNetWorthForm(networthForm) : ''}
     <div class="privacy-wrap${isPrivacyMode() ? ' active' : ''}" style="margin-bottom:16px">
       <div class="card">
-        ${networth.length === 0 ? '<div class="empty-state">No check-ins yet — log your account balances periodically to see a trend in Analysis.</div>' : [...networth].sort((a, b) => b.date.localeCompare(a.date)).map(n => `
+        ${networth.length === 0 ? '<div class="empty-state">No check-ins yet — log your account balances periodically to see a trend in Analysis.</div>' : sortByDateDesc(networth).map(n => `
           <div class="networth-row" data-id="${n.id}">
             <div class="networth-main">
               <div class="networth-date">${formatDateDMY(n.date)}</div>
@@ -263,7 +263,7 @@ export function renderSettings(container, opts) {
     renderSettings(container, opts)
   })
   container.querySelector('#addNetWorthBtn')?.addEventListener('click', () => {
-    networthForm = { date: todayISO(), items: [{ name: '', category: 'cash', value: '' }] }
+    networthForm = { date: todayISO(), items: seedNetWorthItems(latestAccountValues(opts.networth)) }
     renderSettings(container, opts)
   })
   container.querySelectorAll('.networth-delete').forEach(btn => {
@@ -454,18 +454,8 @@ function renderNetWorthForm(form) {
       <label style="margin-top:0">Date</label>
       <input id="nwDate" type="date" value="${form.date}" />
       <label>Accounts</label>
-      ${form.items.map((it, i) => `
-        <div class="nw-item-row" data-index="${i}">
-          <input class="nwItemName" type="text" placeholder="e.g. KBANK Savings" value="${escapeHtml(it.name)}" />
-          <select class="nwItemCategory">
-            <option value="cash" ${it.category === 'cash' ? 'selected' : ''}>Cash</option>
-            <option value="invested" ${it.category === 'invested' ? 'selected' : ''}>Invested</option>
-            <option value="insurance" ${it.category === 'insurance' ? 'selected' : ''}>Insurance</option>
-          </select>
-          <input class="nwItemValue" type="number" inputmode="decimal" placeholder="0" value="${escapeHtml(it.value)}" />
-          <button class="nwItemRemove" type="button" ${form.items.length <= 1 ? 'disabled' : ''}>✕</button>
-        </div>
-      `).join('')}
+      ${netWorthItemRowsHtml(form.items)}
+      <div style="font-size:11.5px;color:var(--text3);margin-top:6px">Leave a balance blank to skip that account this time — it won't be zeroed out.</div>
       <button class="btn secondary" id="nwAddItem" style="margin-top:8px">+ Add Account</button>
       <div style="display:flex;gap:10px;margin-top:16px">
         <button class="btn" id="nwSave">Add</button>
@@ -481,26 +471,15 @@ function wireNetWorthForm(container, opts) {
   container.querySelector('#nwDate').oninput = e => { networthForm.date = e.target.value }
   container.querySelector('#nwCancel').onclick = () => { networthForm = null; renderSettings(container, opts) }
 
-  container.querySelectorAll('.nw-item-row').forEach(row => {
-    const i = Number(row.dataset.index)
-    row.querySelector('.nwItemName').oninput = e => { networthForm.items[i].name = e.target.value }
-    row.querySelector('.nwItemCategory').onchange = e => { networthForm.items[i].category = e.target.value }
-    row.querySelector('.nwItemValue').oninput = e => { networthForm.items[i].value = e.target.value }
-    row.querySelector('.nwItemRemove').onclick = () => {
-      networthForm.items.splice(i, 1)
-      renderSettings(container, opts)
-    }
-  })
+  wireNetWorthItemRows(container, networthForm.items, { onChange: () => renderSettings(container, opts) })
 
   container.querySelector('#nwAddItem').onclick = () => {
-    networthForm.items.push({ name: '', category: 'cash', value: '' })
+    networthForm.items.push({ name: '', category: 'cash', value: '', lastValue: null })
     renderSettings(container, opts)
   }
 
   container.querySelector('#nwSave').onclick = async () => {
-    const cleaned = networthForm.items
-      .map(it => ({ name: it.name.trim(), category: it.category, value: parseFloat(it.value) || 0 }))
-      .filter(it => it.name)
+    const cleaned = cleanNetWorthItems(networthForm.items)
     if (!networthForm.date) { toast('Pick a date'); return }
     if (!cleaned.length) { toast('Add at least one named account'); return }
     const btn = container.querySelector('#nwSave')
