@@ -3,14 +3,14 @@ import { BUDGET_TYPE_ORDER, EXPENSE_CATEGORIES, CATEGORY_ICONS } from '../catego
 import { getOrder, setOrder, getCollapsed, toggleCollapsed } from '../dashboardLayout.js'
 import { computeCurrentLoggingStreak, computeBudgetStreak } from '../achievements.js'
 import { openNetWorthQuickLog } from '../netWorthQuickLog.js'
-import { netWorthTimeline } from '../analysisData.js'
+import { netWorthTimeline, goalProgress } from '../analysisData.js'
 import { billsDue } from '../recurringReminders.js'
 import { openMarkPaidDialog } from '../markPaidDialog.js'
 
 const RANGES = [1, 3, 6, 12]
 
 export function renderDashboard(container, opts) {
-  const { txns, budgets, year, month, range, onMonthChange, onRangeChange, networth, onNetWorthChanged, recurring, onBillsChanged } = opts
+  const { txns, budgets, year, month, range, onMonthChange, onRangeChange, networth, onNetWorthChanged, recurring, onBillsChanged, goals } = opts
   const { from, to } = rangeWindow(year, month, range)
   const rangeTxns = txns.filter(t => { const d = effectiveDate(t); return d >= from && d <= to })
 
@@ -95,6 +95,10 @@ export function renderDashboard(container, opts) {
     bills: {
       title: 'Bills Due',
       body: renderBillsDueWidgetBody(recurring),
+    },
+    goals: {
+      title: 'Goals',
+      body: renderGoalsWidgetBody(goals, networth),
     },
   }
 
@@ -256,6 +260,23 @@ function renderBillsDueWidgetBody(recurring) {
         </div>
         <div class="bill-amt">${formatMoney(r.amount)}</div>
         <button class="btn bill-mark-paid" data-id="${r.id}">Mark Paid</button>
+      </div>
+    `
+  }).join('')
+}
+
+function renderGoalsWidgetBody(goals, networth) {
+  if (!goals?.length) return '<div class="empty-state">No goals yet — add one in Settings.</div>'
+  return goals.map(g => {
+    const progress = goalProgress(g, networth)
+    const cls = progress.pct >= 100 ? '' : (progress.pct >= 80 ? 'warn' : '')
+    return `
+      <div class="budget-row">
+        <div class="budget-row-top">
+          <span class="cat">${escapeHtml(g.name)}</span>
+          <span class="nums">${formatMoney(progress.current)} / ${formatMoney(progress.target)}</span>
+        </div>
+        <div class="budget-bar-track"><div class="budget-bar-fill ${cls}" style="width:${progress.pct}%"></div></div>
       </div>
     `
   }).join('')

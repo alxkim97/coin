@@ -108,6 +108,33 @@ export function latestAccountValues(networth) {
   return [...byName.values()]
 }
 
+// Current progress toward a savings goal — either its own manually-updated
+// current_amount, or (if linked_account is set) the latest known value of
+// that net-worth account via latestAccountValues above. suggestedMonthly
+// assumes even pacing to target_date; null with no target_date, an already-
+// past target_date, or nothing left to save.
+export function goalProgress(goal, networth) {
+  let current = Number(goal.current_amount) || 0
+  if (goal.linked_account) {
+    const match = latestAccountValues(networth).find(a => a.name.toLowerCase() === goal.linked_account.toLowerCase())
+    if (match) current = match.value
+  }
+  const target = Number(goal.target_amount) || 0
+  const pct = target > 0 ? Math.min(100, (current / target) * 100) : 0
+  const remaining = Math.max(0, target - current)
+
+  let suggestedMonthly = null
+  if (goal.target_date && remaining > 0) {
+    const msRemaining = new Date(goal.target_date + 'T00:00:00') - new Date()
+    if (msRemaining > 0) {
+      const monthsRemaining = Math.max(1, msRemaining / (1000 * 60 * 60 * 24 * 30.44))
+      suggestedMonthly = remaining / monthsRemaining
+    }
+  }
+
+  return { current, target, pct, remaining, suggestedMonthly }
+}
+
 // One point per check-in *event*, but each point's total reflects the full
 // latest-per-account picture as of that moment (via latestAccountValues),
 // not just that one check-in's own items — so logging banks and investments

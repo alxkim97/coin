@@ -1,5 +1,5 @@
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, BUDGET_TYPE_ORDER, CATEGORY_ICONS, FREQUENCIES } from '../categories.js'
-import { upsertBudget, signOut, addRecurring, updateRecurring, deleteRecurring, updateEmail, updateDisplayName, addNetWorth, deleteNetWorth, bulkInsertTransactions, bulkInsertRecurring, bulkRestoreNetWorth } from '../supabase.js'
+import { upsertBudget, signOut, addRecurring, updateRecurring, deleteRecurring, updateEmail, updateDisplayName, addNetWorth, deleteNetWorth, bulkInsertTransactions, bulkInsertRecurring, bulkRestoreNetWorth, bulkInsertGoals } from '../supabase.js'
 import { toast, downloadFile, txnsToCsv, todayISO, formatMoney, confirmDialog, frequencyLabel, escapeHtml, computeSuggestedLimits, formatDateDMY, dmyDateFieldHtml, wireDmyDateField, sortByDateDesc } from '../helpers.js'
 import { ACCENTS, getMode, setMode, getAccent, setAccent } from '../theme.js'
 import { isPrivacyMode, setPrivacyMode } from '../privacy.js'
@@ -13,7 +13,7 @@ let recurringForm = null
 let networthForm = null
 
 export function renderSettings(container, opts) {
-  const { budgets, txns, recurring, networth, session, onBudgetsChanged, onRecurringChanged, onNetWorthChanged, onSignedOut, onSessionChanged } = opts
+  const { budgets, txns, recurring, networth, goals, session, onBudgetsChanged, onRecurringChanged, onNetWorthChanged, onSignedOut, onSessionChanged } = opts
 
   const displayName = session?.user?.user_metadata?.display_name || ''
   const suggestedLimits = computeSuggestedLimits(txns, 3)
@@ -135,6 +135,12 @@ export function renderSettings(container, opts) {
       ${isPrivacyMode() ? '<div class="privacy-overlay">🔒 Balances hidden</div>' : ''}
     </div>
 
+    <h2>Goals</h2>
+    <div class="card" style="margin-bottom:16px">
+      <div style="font-size:13px;color:var(--text2);margin-bottom:12px">${goals.length ? `${goals.length} savings goal${goals.length === 1 ? '' : 's'} tracked.` : 'Set a target for something specific, like a renovation fund or a trip.'}</div>
+      <button class="btn secondary" id="goalsBtn">${goals.length ? 'Manage Goals' : '+ Add a Goal'}</button>
+    </div>
+
     <h2>Year in Review</h2>
     <div class="card" style="margin-bottom:16px">
       <div style="font-size:13px;color:var(--text2);margin-bottom:12px">A recap of any year you've logged — income, spending, top categories, and personal records.</div>
@@ -183,12 +189,13 @@ export function renderSettings(container, opts) {
   })
 
   container.querySelector('#yearReviewBtn').onclick = () => opts.onViewYearReview()
+  container.querySelector('#goalsBtn').onclick = () => opts.onViewGoals()
 
   container.querySelector('#exportCsv').onclick = () => {
     downloadFile(`coin-transactions-${todayISO()}.csv`, txnsToCsv(txns), 'text/csv')
   }
   container.querySelector('#exportJson').onclick = () => {
-    const backup = { version: 1, exportedAt: new Date().toISOString(), txns, budgets, recurring, networth }
+    const backup = { version: 1, exportedAt: new Date().toISOString(), txns, budgets, recurring, networth, goals }
     downloadFile(`coin-backup-${todayISO()}.json`, JSON.stringify(backup, null, 2), 'application/json')
   }
 
@@ -215,6 +222,7 @@ export function renderSettings(container, opts) {
       backup.budgets?.length && `${backup.budgets.length} budget${backup.budgets.length === 1 ? '' : 's'}`,
       backup.recurring?.length && `${backup.recurring.length} repeat purchase${backup.recurring.length === 1 ? '' : 's'}`,
       backup.networth?.length && `${backup.networth.length} net worth check-in${backup.networth.length === 1 ? '' : 's'}`,
+      backup.goals?.length && `${backup.goals.length} goal${backup.goals.length === 1 ? '' : 's'}`,
     ].filter(Boolean).join(', ')
     if (!counts) { toast('Backup file is empty'); return }
 
@@ -226,6 +234,7 @@ export function renderSettings(container, opts) {
       if (backup.budgets?.length) for (const b of backup.budgets) await upsertBudget(b.category, b.monthly_limit, b.budget_type)
       if (backup.recurring?.length) await bulkInsertRecurring(backup.recurring)
       if (backup.networth?.length) await bulkRestoreNetWorth(backup.networth)
+      if (backup.goals?.length) await bulkInsertGoals(backup.goals)
       toast('Backup restored')
       await opts.onDataRestored()
     } catch (e) {

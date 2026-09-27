@@ -1,5 +1,5 @@
 import './style.css'
-import { getSession, onAuthChange, fetchTransactions, fetchBudgets, fetchRecurring, addTransaction, updateRecurring, fetchNetWorth } from './supabase.js'
+import { getSession, onAuthChange, fetchTransactions, fetchBudgets, fetchRecurring, addTransaction, updateRecurring, fetchNetWorth, fetchGoals } from './supabase.js'
 import { renderAuth } from './views/auth.js'
 import { renderQuickAdd } from './views/quickAdd.js'
 import { renderTransactions } from './views/transactions.js'
@@ -8,6 +8,7 @@ import { renderAnalysis } from './views/analysis.js'
 import { renderSettings } from './views/settings.js'
 import { renderAsk } from './views/ask.js'
 import { renderYearReview } from './views/yearReview.js'
+import { renderGoals } from './views/goals.js'
 import { toast, cacheData, getCachedData, todayISO, advanceDate } from './helpers.js'
 import { categoryBudgetType } from './categories.js'
 import { applyTheme } from './theme.js'
@@ -44,6 +45,7 @@ const state = {
   budgets: [],
   recurring: [],
   networth: [],
+  goals: [],
   year: now.getFullYear(),
   month: now.getMonth(),
   range: 1,
@@ -77,6 +79,14 @@ async function loadNetWorth() {
     state.networth = await fetchNetWorth()
   } catch {
     state.networth = [] // table may not exist yet on an older install — best-effort, not fatal
+  }
+}
+
+async function loadGoals() {
+  try {
+    state.goals = await fetchGoals()
+  } catch {
+    state.goals = [] // table may not exist yet on an older install — best-effort, not fatal
   }
 }
 
@@ -221,6 +231,7 @@ function renderImmediate() {
       onNetWorthChanged: async () => { await loadNetWorth(); render() },
       recurring: state.recurring,
       onBillsChanged: async () => { await loadData(); render() },
+      goals: state.goals,
     })
   } else if (state.view === 'transactions') {
     renderTransactions(screen, {
@@ -251,6 +262,7 @@ function renderImmediate() {
       txns: state.txns,
       recurring: state.recurring,
       networth: state.networth,
+      goals: state.goals,
       session: state.session,
       onBudgetsChanged: async () => { state.budgets = await fetchBudgets(); render() },
       onRecurringChanged: async () => { state.recurring = await fetchRecurring(); render() },
@@ -258,14 +270,22 @@ function renderImmediate() {
       onSessionChanged: async () => { state.session = await getSession(); render() },
       onSignedOut: () => { state.session = null; render() },
       onViewYearReview: () => setView('yearReview'),
-      // backup restore can touch all four tables at once — one combined
-      // refresh instead of chaining the four single-table callbacks above
-      onDataRestored: async () => { await loadData(); await loadNetWorth(); render() },
+      onViewGoals: () => setView('goals'),
+      // backup restore can touch all five tables at once — one combined
+      // refresh instead of chaining the single-table callbacks above
+      onDataRestored: async () => { await loadData(); await loadNetWorth(); await loadGoals(); render() },
     })
   } else if (state.view === 'yearReview') {
     renderYearReview(screen, {
       txns: state.txns,
       onBack: () => setView('settings'),
+    })
+  } else if (state.view === 'goals') {
+    renderGoals(screen, {
+      goals: state.goals,
+      networth: state.networth,
+      onBack: () => setView('settings'),
+      onGoalsChanged: async () => { await loadGoals(); render() },
     })
   } else if (state.view === 'ask') {
     renderAsk(screen, {
@@ -330,6 +350,7 @@ async function boot() {
       await loadData()
       await processRecurring()
       await loadNetWorth()
+      await loadGoals()
     } catch (e) {
       toast(e.message || 'Failed to load data')
     }

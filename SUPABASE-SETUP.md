@@ -182,6 +182,28 @@ alter table coin_transactions add column if not exists tags text[] not null defa
 
 Optional free-text labels on a transaction (e.g. "reimbursable", a trip name), separate from the fixed `category`/`subcategory` fields. Collapsed behind a "+ Add tags" link on Add/Edit Transaction so it doesn't add visual weight to the common case of not using them. Searchable from Transactions' existing filter box, and included in the CSV/JSON exports.
 
+## Adding savings goals (2026-09-27)
+
+Run this once — a new table, doesn't touch anything existing:
+
+```sql
+create table coin_goals (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  name text not null,
+  target_amount numeric not null,
+  target_date date,
+  current_amount numeric not null default 0,
+  linked_account text, -- optional: matches a net-worth item name for auto-tracked progress
+  created_at timestamptz not null default now()
+);
+alter table coin_goals enable row level security;
+create policy "own rows" on coin_goals for all
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+```
+
+Sinking funds / savings targets (Settings → Goals, and a Dashboard widget). Progress either comes from `current_amount`, which you update by hand, or — if `linked_account` names one of your net-worth accounts — from that account's latest logged value, same lookup Analysis's Net Worth section already uses.
+
 ## One-time data migration
 
 To bring over your existing 1,416 transactions from Ledger's `manual logs/ledger-import-all.json`, see `scripts/migrate.js` in this repo.

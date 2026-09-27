@@ -173,6 +173,40 @@ export async function deleteNetWorth(id) {
   if (error) throw error
 }
 
+/* ── Savings goals ── */
+
+export async function fetchGoals() {
+  const { data, error } = await supa.from('coin_goals').select('*').order('created_at', { ascending: true })
+  if (error) throw error
+  return data
+}
+
+export async function addGoal(goal) {
+  const { data, error } = await supa.from('coin_goals').insert(goal).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function updateGoal(id, patch) {
+  const { data, error } = await supa.from('coin_goals').update(patch).eq('id', id).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteGoal(id) {
+  const { error } = await supa.from('coin_goals').delete().eq('id', id)
+  if (error) throw error
+}
+
+// See bulkInsertTransactions above — same restore-only, additive-only contract.
+export async function bulkInsertGoals(rows) {
+  const clean = rows.map(({ id, user_id, created_at, ...rest }) => rest)
+  if (!clean.length) return []
+  const { data, error } = await supa.from('coin_goals').insert(clean).select()
+  if (error) throw error
+  return data
+}
+
 // Restore-only, additive-only (see bulkInsertTransactions). Reuses
 // addNetWorth's own checkin+items+rollback logic for the common case;
 // falls back to inserting the checkin row directly for a legacy backup
