@@ -21,6 +21,7 @@ function txnRowHtml(t) {
           <div class="txn-main">
             <div class="txn-cat">${escapeHtml(t.category)}${t.is_credit_card ? ' <span class="txn-cc" title="Paid via credit card">💳</span>' : ''}${t.is_shopee ? ' <span class="txn-cc" title="Bought via Shopee">🛍️</span>' : ''}</div>
             ${t.subcategory ? `<div class="txn-sub">${escapeHtml(t.subcategory)}</div>` : ''}
+            ${t.tags?.length ? `<div class="txn-tags">${t.tags.map(tag => `<span class="txn-tag">${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
           </div>
           <div class="txn-amt ${t.type}">${t.type === 'income' ? '+' : '−'}${formatMoney(t.amount)}</div>
         </div>
@@ -191,7 +192,7 @@ export function renderTransactions(container, { txns, budgets, year, month, onMo
       if (min !== null && Number(t.amount) < min) return false
       if (max !== null && Number(t.amount) > max) return false
       if (q) {
-        const hay = `${t.category} ${t.subcategory || ''} ${t.notes || ''}`.toLowerCase()
+        const hay = `${t.category} ${t.subcategory || ''} ${t.notes || ''} ${(t.tags || []).join(' ')}`.toLowerCase()
         if (!hay.includes(q)) return false
       }
       return true

@@ -172,6 +172,16 @@ alter table coin_recurring add column if not exists is_shopee boolean not null d
 
 Marks whether an expense was bought via Shopee, same pattern as the credit-card flag. Toggle it from the "Bought via Shopee" checkbox on Add/Edit Transaction and on Repeat Purchases; a 🛍️ shows next to flagged transactions in History, and a repeat purchase carries the flag through to whatever it auto-posts.
 
+## Adding free-form tags to transactions (2026-09-27)
+
+Run this once — additive, existing rows default to an empty array:
+
+```sql
+alter table coin_transactions add column if not exists tags text[] not null default '{}';
+```
+
+Optional free-text labels on a transaction (e.g. "reimbursable", a trip name), separate from the fixed `category`/`subcategory` fields. Collapsed behind a "+ Add tags" link on Add/Edit Transaction so it doesn't add visual weight to the common case of not using them. Searchable from Transactions' existing filter box, and included in the CSV/JSON exports.
+
 ## One-time data migration
 
 To bring over your existing 1,416 transactions from Ledger's `manual logs/ledger-import-all.json`, see `scripts/migrate.js` in this repo.

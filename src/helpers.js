@@ -254,8 +254,9 @@ function csvField(v) {
 }
 
 export function txnsToCsv(txns) {
-  const header = ['date', 'type', 'category', 'subcategory', 'amount', 'notes']
-  const rows = txns.map(t => [t.date, t.type, t.category, t.subcategory || '', t.amount, t.notes || ''].map(csvField).join(','))
+  const header = ['date', 'type', 'category', 'subcategory', 'amount', 'notes', 'tags']
+  // semicolon-joined, not comma — commas are the CSV delimiter itself
+  const rows = txns.map(t => [t.date, t.type, t.category, t.subcategory || '', t.amount, t.notes || '', (t.tags || []).join('; ')].map(csvField).join(','))
   return [header.join(','), ...rows].join('\n')
 }
 

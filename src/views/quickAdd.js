@@ -49,6 +49,11 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
   let recurInstallmentsTotal = ''
   let isCreditCard = editingTxn?.is_credit_card || false
   let isShopee = editingTxn?.is_shopee || false
+  let tags = editingTxn?.tags || []
+  // collapsed by default — keeps the common case (no tags) exactly as lean
+  // as it was before this existed, only editing an already-tagged entry
+  // (or tapping "+ Add tags") expands it
+  let showTagInput = tags.length > 0
 
   const itemIndex = buildItemIndex(txns, recurring)
 
@@ -105,6 +110,18 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
 
       <label>Notes (optional)</label>
       <textarea id="notesInput" rows="2" placeholder="Anything else...">${notes}</textarea>
+
+      ${showTagInput ? `
+        <label>Tags (optional)</label>
+        ${tags.length ? `
+          <div class="chip-grid" id="tagChips" style="margin-bottom:8px">
+            ${tags.map(t => `<span class="chip active" data-tag="${escapeHtml(t)}">${escapeHtml(t)} ✕</span>`).join('')}
+          </div>
+        ` : ''}
+        <input id="tagInput" type="text" placeholder="Type a tag, press Enter" autocomplete="off" />
+      ` : `
+        <button type="button" class="link-btn" id="showTagInputBtn" style="margin-top:2px">+ Add tags</button>
+      `}
 
       ${type === 'expense' ? `
         <label class="checkbox-row" style="margin-top:16px">
@@ -212,6 +229,29 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
 
     wireDmyDateField(container, 'dateInput', v => { date = v })
     container.querySelector('#notesInput').oninput = e => { notes = e.target.value }
+    container.querySelector('#showTagInputBtn')?.addEventListener('click', () => {
+      showTagInput = true
+      draw()
+      container.querySelector('#tagInput')?.focus()
+    })
+    container.querySelectorAll('#tagChips .chip').forEach(chip => {
+      chip.onclick = () => { tags = tags.filter(t => t !== chip.dataset.tag); draw() }
+    })
+    const tagInputEl = container.querySelector('#tagInput')
+    if (tagInputEl) {
+      tagInputEl.onkeydown = e => {
+        if (e.key !== 'Enter' && e.key !== ',') return
+        e.preventDefault()
+        const v = tagInputEl.value.replace(/,$/, '').trim()
+        if (v && !tags.some(t => t.toLowerCase() === v.toLowerCase())) {
+          tags = [...tags, v]
+          draw()
+          container.querySelector('#tagInput')?.focus()
+        } else {
+          tagInputEl.value = ''
+        }
+      }
+    }
     container.querySelector('#isCreditCard')?.addEventListener('change', e => { isCreditCard = e.target.checked })
     container.querySelector('#isShopee')?.addEventListener('change', e => { isShopee = e.target.checked })
     container.querySelector('#saveAsRecurring').onchange = e => { saveAsRecurring = e.target.checked; draw() }
@@ -239,6 +279,10 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
   }
 
   async function save(stayOnAdd) {
+    // a tag typed but never confirmed with Enter shouldn't just vanish on save
+    const danglingTag = container.querySelector('#tagInput')?.value.trim()
+    if (danglingTag && !tags.some(t => t.toLowerCase() === danglingTag.toLowerCase())) tags = [...tags, danglingTag]
+
     const amt = parseFloat(amount)
     if (!amt || amt <= 0) { toast('Enter a valid amount'); return }
     if (!category) { toast('Pick a category'); return }
@@ -255,6 +299,7 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
         category,
         subcategory: subcategory || null,
         notes: notes || null,
+        tags,
         budget_type: type === 'expense' ? categoryBudgetType(category) : null,
         is_credit_card: type === 'expense' ? isCreditCard : false,
         is_shopee: type === 'expense' ? isShopee : false,
