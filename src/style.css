@@ -14,6 +14,18 @@
   --radius: 14px;
   color-scheme: light;
 
+  /* elevation — cards get -sm, floating/glass surfaces (tab bar, modals) get
+     -md or -lg. Values differ per theme block below, not just computed from
+     one color, because a black shadow needs a different opacity on a light
+     surface than on one that's already near-black. */
+  --shadow-sm: 0 1px 2px rgba(15,23,42,.05), 0 1px 1px rgba(15,23,42,.03);
+  --shadow-md: 0 6px 16px rgba(15,23,42,.09), 0 1px 3px rgba(15,23,42,.06);
+  --shadow-lg: 0 12px 32px rgba(15,23,42,.14), 0 2px 6px rgba(15,23,42,.07);
+  /* translucent --surface, for backdrop-filter panels (tab bar/sidebar) —
+     Liquid Glass is reserved for the floating nav layer, never content
+     surfaces (materials.md), so only this one token uses it. */
+  --surface-glass: rgba(255, 255, 255, .72);
+
   /* chart series — validated categorical order (fixed, independent of accent choice) */
   --chart-1: #2a78d6;
   --chart-2: #eb6834;
@@ -65,6 +77,11 @@
     --accent-weak: #1e3a6b;
     color-scheme: dark;
 
+    --shadow-sm: 0 1px 2px rgba(0,0,0,.35), 0 1px 1px rgba(0,0,0,.25);
+    --shadow-md: 0 6px 20px rgba(0,0,0,.45), 0 1px 3px rgba(0,0,0,.3);
+    --shadow-lg: 0 14px 36px rgba(0,0,0,.55), 0 2px 8px rgba(0,0,0,.35);
+    --surface-glass: rgba(26, 29, 35, .72);
+
     --chart-1: #3987e5;
     --chart-2: #d95926;
     --chart-3: #199e70;
@@ -93,6 +110,11 @@
   --accent: #4d8dff;
   --accent-weak: #1e3a6b;
   color-scheme: dark;
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.35), 0 1px 1px rgba(0,0,0,.25);
+  --shadow-md: 0 6px 20px rgba(0,0,0,.45), 0 1px 3px rgba(0,0,0,.3);
+  --shadow-lg: 0 14px 36px rgba(0,0,0,.55), 0 2px 8px rgba(0,0,0,.35);
+  --surface-glass: rgba(26, 29, 35, .72);
 
   --chart-1: #3987e5;
   --chart-2: #d95926;
@@ -139,6 +161,30 @@
 
 * { box-sizing: border-box; }
 
+/* Every transition/animation below assumes motion is welcome — this is the
+   one place that turns it off wholesale for anyone who's told their OS
+   otherwise (motion.md: "Make motion optional"). */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
+/* main.js wraps its full re-render in document.startViewTransition() when
+   the browser supports it — render() rebuilds #app from scratch on every
+   state change, so this is what turns that rebuild into a brief crossfade
+   instead of an instant swap. Short on purpose: this fires on every nav tap,
+   and motion.md warns against lingering animation on frequent interactions. */
+::view-transition-old(root), ::view-transition-new(root) {
+  animation-duration: 120ms;
+}
+
 html, body {
   margin: 0;
   padding: 0;
@@ -173,6 +219,15 @@ h2 { font-size: 15px; color: var(--text2); margin: 20px 0 10px; text-transform: 
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+/* Keyboard focus ring, reused on every interactive custom control below
+   (buttons, tabs, chips, rows) — desktop.md's "keyboard-only use works on
+   desktop" needs more than the text-input :focus rule that already existed. */
+.btn:focus-visible, .tab:focus-visible, .chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .btn {
@@ -189,11 +244,14 @@ h2 { font-size: 15px; color: var(--text2); margin: 20px 0 10px; text-transform: 
   background: var(--accent);
   color: white;
   width: 100%;
+  box-shadow: var(--shadow-sm);
+  transition: transform .12s ease, box-shadow .12s ease, opacity .12s ease;
 }
+.btn:active:not(:disabled) { transform: scale(.97); box-shadow: none; }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
-.btn.secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+.btn.secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); box-shadow: none; }
 .btn.danger { background: var(--red); }
-.btn.ghost { background: transparent; color: var(--text2); }
+.btn.ghost { background: transparent; color: var(--text2); box-shadow: none; }
 
 input, select, textarea {
   width: 100%;
@@ -204,7 +262,9 @@ input, select, textarea {
   color: var(--text);
   font-size: 15px;
   font-family: inherit;
+  transition: border-color .15s ease;
 }
+input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 
 /* DD/MM/YY date fields — native <input type="date"> renders its own text in
@@ -264,10 +324,12 @@ label:first-child { margin-top: 0; }
   font-size: 14px;
   color: var(--text2);
   cursor: pointer;
+  transition: background .15s ease, color .15s ease, box-shadow .15s ease, transform .12s ease;
 }
-.toggle-row button.active { background: var(--surface); color: var(--text); }
+.toggle-row button.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
 .toggle-row button.active.expense { color: var(--red); }
 .toggle-row button.active.income { color: var(--green); }
+.toggle-row button:active { transform: scale(.97); }
 
 .chip-grid {
   display: flex;
@@ -283,8 +345,13 @@ label:first-child { margin-top: 0; }
   font-size: 13.5px;
   cursor: pointer;
   font-weight: 500;
+  transition: background .15s ease, color .15s ease, border-color .15s ease, transform .12s ease;
 }
 .chip.active { background: var(--accent); border-color: var(--accent); color: white; }
+.chip:active { transform: scale(.96); }
+@media (hover: hover) {
+  .chip:not(.active):hover { border-color: var(--accent); color: var(--text); }
+}
 
 /* ask (AI Q&A) */
 .ask-thread {
@@ -326,20 +393,28 @@ label:first-child { margin-top: 0; }
   border: none;
   background: transparent;
   padding: 8px;
+  font-variant-numeric: tabular-nums;
+  transition: color .15s ease;
 }
-.amount-input:focus { outline: none; }
+.amount-input:focus { outline: none; color: var(--accent); }
 
-/* bottom nav */
+/* bottom nav — the floating functional layer, per materials.md: Liquid
+   Glass (here, backdrop-filter blur) belongs on nav/controls, never on
+   content surfaces, which is why only this panel (and the sidebar variant
+   below) gets it, not .card. */
 .tabbar {
   position: sticky;
   bottom: 0;
   left: 0;
   right: 0;
   display: flex;
-  background: var(--surface);
+  background: var(--surface-glass);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
   border-top: 1px solid var(--border);
   padding: 8px 4px calc(8px + env(safe-area-inset-bottom));
   z-index: 10;
+  box-shadow: var(--shadow-lg);
 }
 .tab {
   flex: 1;
@@ -349,13 +424,25 @@ label:first-child { margin-top: 0; }
   gap: 3px;
   background: none;
   border: none;
+  border-radius: 11px;
+  margin: 0 2px;
   color: var(--text3);
   font-size: 11px;
   font-weight: 600;
   padding: 6px 0;
   cursor: pointer;
+  transition: color .15s ease, background .15s ease, transform .12s ease;
 }
-.tab.active { color: var(--accent); }
+.tab.active {
+  color: var(--accent);
+  background: var(--accent-weak);
+  /* Named so the browser morphs this pill from the old active tab's box to
+     the new one during main.js's view-transition wrap, instead of it just
+     popping into place — render() fully rebuilds the tab bar every time, so
+     without this there'd be nothing to animate between. */
+  view-transition-name: active-tab;
+}
+.tab:active { transform: scale(.93); }
 .tab svg { width: 22px; height: 22px; }
 
 /* transaction rows */
@@ -503,15 +590,21 @@ label:first-child { margin-top: 0; }
   padding: 24px;
 }
 
+@keyframes overlayFadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sheetScaleIn { from { opacity: 0; transform: scale(.96) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+
 .confirm-overlay {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, .5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px;
   z-index: 200;
+  animation: overlayFadeIn .15s ease;
 }
 .confirm-box {
   background: var(--surface);
@@ -520,6 +613,8 @@ label:first-child { margin-top: 0; }
   padding: 20px;
   max-width: 320px;
   width: 100%;
+  box-shadow: var(--shadow-lg);
+  animation: sheetScaleIn .18s ease;
 }
 .confirm-box p { margin: 0 0 16px; font-size: 15px; font-weight: 600; }
 .confirm-actions { display: flex; gap: 10px; }
@@ -580,8 +675,10 @@ label:first-child { margin-top: 0; }
   font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
+  transition: background .15s ease, color .15s ease, border-color .15s ease, transform .12s ease;
 }
 .range-toggle button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.range-toggle button:active { transform: scale(.96); }
 
 .vendor-row {
   display: flex;
@@ -745,12 +842,30 @@ label:first-child { margin-top: 0; }
 .holding-change.pos { color: var(--green); }
 .holding-change.neg { color: var(--red); }
 
-/* analysis: net worth hero card (mobile) */
-.nw-hero-card { text-align: center; padding: 24px 16px; }
+/* analysis: net worth hero card (mobile) — the one place on the mobile
+   view this section gets, so it earns a bit more presence than a plain .card */
+.nw-hero-card { text-align: center; padding: 28px 16px; box-shadow: var(--shadow-md); }
 .nw-hero-value { font-size: var(--text-hero, 46px); font-weight: 800; font-variant-numeric: tabular-nums; }
 .nw-hero-trend { font-size: 13.5px; font-weight: 600; margin-top: 8px; }
 .nw-hero-trend.pos { color: var(--green); }
 .nw-hero-trend.neg { color: var(--red); }
+
+/* desktop-only row hover tint, across every list-row idiom in the app —
+   @media (hover: hover) so a tap on a touch device doesn't leave a "stuck"
+   highlight behind after the finger lifts (no hover event to clear it). */
+.swipe-row-content, .vendor-row, .recurring-row, .bill-row, .networth-row, .holding-row {
+  transition: background .15s ease;
+}
+@media (hover: hover) {
+  .swipe-row-content:hover,
+  .vendor-row:hover,
+  .recurring-row:hover,
+  .bill-row:hover,
+  .networth-row:hover,
+  .holding-row:hover {
+    background: var(--accent-weak);
+  }
+}
 
 /* settings: net worth check-in form — one row per named account */
 .nw-item-row {
@@ -970,6 +1085,9 @@ label:first-child { margin-top: 0; }
     border-top: none;
     border-right: 1px solid var(--border);
     gap: 4px;
+    /* the mobile bar's --shadow-lg falls downward, wrong direction for a
+       left-edge sidebar — the border above already separates it from content */
+    box-shadow: none;
   }
   .tab {
     flex: 0 0 auto;
@@ -979,6 +1097,7 @@ label:first-child { margin-top: 0; }
     padding: 10px 12px;
     border-radius: 10px;
     font-size: 14px;
+    margin: 0;
   }
   .tab:hover { background: var(--accent-weak); }
   .center-screen { max-width: 420px; margin: 0 auto; }

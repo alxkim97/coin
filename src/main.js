@@ -14,6 +14,12 @@ import { onDesktopViewChange } from './platform.js'
 
 applyTheme()
 
+// AI Q&A is built (see views/ask.js, api/ask.js) but needs an OPENAI_API_KEY
+// set in Vercel before it can answer anything — hidden from the tab bar
+// until that's done. The 'ask' view branch below stays wired so flipping
+// this back on is a one-line change.
+const ASK_ENABLED = false
+
 const app = document.getElementById('app')
 
 // render() already fully rebuilds #app on every state change, so reacting to
@@ -161,7 +167,19 @@ async function refreshAndRender(nextView) {
   render()
 }
 
+// render() rebuilds #app from scratch on every state change (no diffing
+// anywhere in this app) — wrapping that in the View Transition API turns an
+// instant swap into a brief native crossfade, for free, without touching any
+// of the ~15 call sites that already call render(). Falls back to the plain
+// swap in browsers without support, and is skipped outright when the person
+// has asked their OS for reduced motion (motion.md: "make motion optional").
 function render() {
+  const skip = !document.startViewTransition || window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  if (skip) renderImmediate()
+  else document.startViewTransition(() => renderImmediate())
+}
+
+function renderImmediate() {
   app.innerHTML = ''
 
   if (!state.session) {
@@ -257,9 +275,11 @@ function render() {
     <button class="tab ${state.view === 'analysis' ? 'active' : ''}" data-view="analysis">
       <span style="font-size:20px">📊</span><span>Analysis</span>
     </button>
+    ${ASK_ENABLED ? `
     <button class="tab ${state.view === 'ask' ? 'active' : ''}" data-view="ask">
       <span style="font-size:20px">💬</span><span>Ask</span>
     </button>
+    ` : ''}
     <button class="tab ${state.view === 'settings' ? 'active' : ''}" data-view="settings">
       <span style="font-size:20px">⚙️</span><span>Settings</span>
     </button>
