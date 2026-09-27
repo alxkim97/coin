@@ -6,6 +6,7 @@ import { renderTransactions } from './views/transactions.js'
 import { renderDashboard } from './views/dashboard.js'
 import { renderAnalysis } from './views/analysis.js'
 import { renderSettings } from './views/settings.js'
+import { renderAsk } from './views/ask.js'
 import { toast, cacheData, getCachedData, todayISO, advanceDate } from './helpers.js'
 import { categoryBudgetType } from './categories.js'
 import { applyTheme } from './theme.js'
@@ -224,6 +225,13 @@ function render() {
       onSessionChanged: async () => { state.session = await getSession(); render() },
       onSignedOut: () => { state.session = null; render() },
     })
+  } else if (state.view === 'ask') {
+    renderAsk(screen, {
+      txns: state.txns,
+      budgets: state.budgets,
+      networth: state.networth,
+      session: state.session,
+    })
   }
 
   const tabbar = document.createElement('div')
@@ -240,6 +248,9 @@ function render() {
     </button>
     <button class="tab ${state.view === 'analysis' ? 'active' : ''}" data-view="analysis">
       <span style="font-size:20px">📊</span><span>Analysis</span>
+    </button>
+    <button class="tab ${state.view === 'ask' ? 'active' : ''}" data-view="ask">
+      <span style="font-size:20px">💬</span><span>Ask</span>
     </button>
     <button class="tab ${state.view === 'settings' ? 'active' : ''}" data-view="settings">
       <span style="font-size:20px">⚙️</span><span>Settings</span>

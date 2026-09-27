@@ -37,6 +37,28 @@ export function categoryBreakdown(txns, days, maxSlices = 7) {
   return top
 }
 
+// Per-category, per-month expense totals over the trailing N months — the
+// granularity monthlyRollup doesn't have (it only tracks income/expense
+// totals). Built for the AI Q&A context digest, where "how much did I spend
+// on X in March" needs more than a single rolled-up number.
+export function categoryMonthlyBreakdown(txns, months = 12) {
+  const now = new Date()
+  const keys = []
+  for (let i = months - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    keys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+  }
+  const keySet = new Set(keys)
+  const byMonth = Object.fromEntries(keys.map(k => [k, {}]))
+  for (const t of txns) {
+    if (t.type !== 'expense') continue
+    const key = t.date.slice(0, 7)
+    if (!keySet.has(key)) continue
+    byMonth[key][t.category] = (byMonth[key][t.category] || 0) + Number(t.amount)
+  }
+  return keys.map(key => ({ month: key, categories: byMonth[key] }))
+}
+
 export function monthlyRollup(txns, months = 12) {
   const now = new Date()
   const rows = []

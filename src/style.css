@@ -286,6 +286,39 @@ label:first-child { margin-top: 0; }
 }
 .chip.active { background: var(--accent); border-color: var(--accent); color: white; }
 
+/* ask (AI Q&A) */
+.ask-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.ask-msg { display: flex; }
+.ask-msg-user { justify-content: flex-end; }
+.ask-msg-assistant { justify-content: flex-start; }
+.ask-msg-bubble {
+  max-width: 82%;
+  padding: 10px 14px;
+  border-radius: 16px;
+  font-size: 14px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+.ask-msg-user .ask-msg-bubble { background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+.ask-msg-assistant .ask-msg-bubble { background: var(--surface); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+.ask-msg-bubble.ask-msg-error { border-color: var(--red); color: var(--red); }
+.ask-msg-bubble.ask-msg-pending { color: var(--text3); font-style: italic; }
+.ask-input-row {
+  display: flex;
+  gap: 8px;
+  position: sticky;
+  bottom: 0;
+  background: var(--bg);
+  padding: 8px 0 4px;
+}
+.ask-input-row input { flex: 1; }
+.ask-input-row .btn { width: auto; padding: 12px 20px; }
+
 .amount-input {
   font-size: 40px;
   font-weight: 700;
