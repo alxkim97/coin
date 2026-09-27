@@ -207,6 +207,34 @@ export async function bulkInsertGoals(rows) {
   return data
 }
 
+/* ── Receipt photos ── */
+
+// Path convention <user_id>/<txnId>-<timestamp>.<ext> — the storage RLS
+// policy scopes access by the first path segment matching auth.uid(), same
+// ownership model as every table's RLS above, just for Storage objects.
+export async function uploadReceipt(txnId, file) {
+  const { data: { user } } = await supa.auth.getUser()
+  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
+  const path = `${user.id}/${txnId}-${Date.now()}.${ext}`
+  const { error: uploadError } = await supa.storage.from('receipts').upload(path, file, { contentType: file.type })
+  if (uploadError) throw uploadError
+  await updateTransaction(txnId, { receipt_path: path })
+  return path
+}
+
+// Private bucket — no public URLs for financial documents, so every view
+// needs a fresh short-lived signed URL instead.
+export async function getReceiptUrl(path) {
+  const { data, error } = await supa.storage.from('receipts').createSignedUrl(path, 3600)
+  if (error) throw error
+  return data.signedUrl
+}
+
+export async function deleteReceipt(path) {
+  const { error } = await supa.storage.from('receipts').remove([path])
+  if (error) throw error
+}
+
 // Restore-only, additive-only (see bulkInsertTransactions). Reuses
 // addNetWorth's own checkin+items+rollback logic for the common case;
 // falls back to inserting the checkin row directly for a legacy backup

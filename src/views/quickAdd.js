@@ -1,5 +1,5 @@
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, categoryBudgetType, CATEGORY_ICONS, FREQUENCIES } from '../categories.js'
-import { addTransaction, updateTransaction, deleteTransaction, addRecurring } from '../supabase.js'
+import { addTransaction, updateTransaction, deleteTransaction, addRecurring, uploadReceipt, getReceiptUrl, deleteReceipt } from '../supabase.js'
 import { todayISO, toast, confirmDialog, formatMoney, escapeHtml, advanceDate, frequencyLabel, dmyDateFieldHtml, wireDmyDateField, sortByDateDesc } from '../helpers.js'
 
 // The transaction's own date can be freely backdated (backfilling an old
@@ -54,6 +54,19 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
   // as it was before this existed, only editing an already-tagged entry
   // (or tapping "+ Add tags") expands it
   let showTagInput = tags.length > 0
+  let receiptFile = null // a freshly-picked File, not yet uploaded — upload happens on save, not on pick
+  let receiptPreviewUrl = null // object URL (fresh pick) or signed URL (existing receipt_path), for the <img>
+  let receiptPath = editingTxn?.receipt_path || null
+  let removeReceipt = false // marks an existing receipt for deletion on save, without touching receiptPath until then
+
+  // Kicked off once here (not inside draw(), which reruns on every field
+  // change) — resolves into receiptPreviewUrl and triggers one redraw once
+  // the signed URL is ready. draw() isn't defined yet at this point in the
+  // file, but it's a hoisted function declaration and this only actually
+  // runs later, after the promise settles, well after draw() exists.
+  if (receiptPath) {
+    getReceiptUrl(receiptPath).then(url => { receiptPreviewUrl = url; draw() }).catch(() => {})
+  }
 
   const itemIndex = buildItemIndex(txns, recurring)
 
@@ -121,6 +134,17 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
         <input id="tagInput" type="text" placeholder="Type a tag, press Enter" autocomplete="off" />
       ` : `
         <button type="button" class="link-btn" id="showTagInputBtn" style="margin-top:2px">+ Add tags</button>
+      `}
+
+      <label>Receipt (optional)</label>
+      ${(receiptFile || (receiptPath && !removeReceipt)) ? `
+        <div class="receipt-preview">
+          <img id="receiptPreview" src="${receiptPreviewUrl || ''}" alt="Receipt" />
+          <button type="button" class="link-btn" id="removeReceiptBtn">Remove</button>
+        </div>
+      ` : `
+        <input type="file" accept="image/*" capture="environment" id="receiptInput" style="display:none" />
+        <button type="button" class="btn secondary" id="pickReceiptBtn" style="width:auto">📷 Add Receipt Photo</button>
       `}
 
       ${type === 'expense' ? `
@@ -252,6 +276,25 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
         }
       }
     }
+    container.querySelector('#pickReceiptBtn')?.addEventListener('click', () => container.querySelector('#receiptInput').click())
+    container.querySelector('#receiptInput')?.addEventListener('change', e => {
+      const file = e.target.files[0]
+      if (!file) return
+      receiptFile = file
+      receiptPreviewUrl = URL.createObjectURL(file)
+      removeReceipt = false
+      draw()
+    })
+    container.querySelector('#removeReceiptBtn')?.addEventListener('click', () => {
+      if (receiptFile) {
+        URL.revokeObjectURL(receiptPreviewUrl)
+        receiptFile = null
+        receiptPreviewUrl = null
+      } else {
+        removeReceipt = true
+      }
+      draw()
+    })
     container.querySelector('#isCreditCard')?.addEventListener('change', e => { isCreditCard = e.target.checked })
     container.querySelector('#isShopee')?.addEventListener('change', e => { isShopee = e.target.checked })
     container.querySelector('#saveAsRecurring').onchange = e => { saveAsRecurring = e.target.checked; draw() }
@@ -268,6 +311,7 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
       if (!ok) return
       try {
         await deleteTransaction(editingTxn.id)
+        if (editingTxn.receipt_path) deleteReceipt(editingTxn.receipt_path).catch(() => {}) // best-effort — an orphaned file is a much smaller problem than blocking the delete on it
         toast('Deleted')
         onSaved()
       } catch (e) {
@@ -304,12 +348,31 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
         is_credit_card: type === 'expense' ? isCreditCard : false,
         is_shopee: type === 'expense' ? isShopee : false,
       }
+      let savedTxn
       if (isEdit) {
-        await updateTransaction(editingTxn.id, payload)
+        savedTxn = await updateTransaction(editingTxn.id, payload)
       } else {
-        await addTransaction(payload)
+        savedTxn = await addTransaction(payload)
       }
       let msg = isEdit ? 'Transaction updated' : 'Added'
+
+      if (removeReceipt && receiptPath) {
+        try {
+          await deleteReceipt(receiptPath)
+          await updateTransaction(savedTxn.id, { receipt_path: null })
+        } catch (e) {
+          msg += ' — but removing the receipt failed'
+        }
+      } else if (receiptFile) {
+        try {
+          await uploadReceipt(savedTxn.id, receiptFile)
+          // replacing an existing receipt — best-effort cleanup of the old
+          // file, after the new one is confirmed uploaded, not before
+          if (receiptPath) deleteReceipt(receiptPath).catch(() => {})
+        } catch (e) {
+          msg += ' — but the receipt photo failed to upload'
+        }
+      }
       if (saveAsRecurring) {
         try {
           const isDated = recurMode === 'auto' || recurMode === 'remind'

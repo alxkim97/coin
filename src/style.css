@@ -398,6 +398,15 @@ label:first-child { margin-top: 0; }
 }
 .amount-input:focus { outline: none; color: var(--accent); }
 
+.receipt-preview { display: flex; align-items: center; gap: 12px; }
+.receipt-preview img {
+  width: 84px; height: 84px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
 /* bottom nav — the floating functional layer, per materials.md: Liquid
    Glass (here, backdrop-filter blur) belongs on nav/controls, never on
    content surfaces, which is why only this panel (and the sidebar variant

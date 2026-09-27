@@ -204,6 +204,21 @@ create policy "own rows" on coin_goals for all
 
 Sinking funds / savings targets (Settings → Goals, and a Dashboard widget). Progress either comes from `current_amount`, which you update by hand, or — if `linked_account` names one of your net-worth accounts — from that account's latest logged value, same lookup Analysis's Net Worth section already uses.
 
+## Adding receipt photo attachments (2026-09-27)
+
+Run this once — a new private Storage bucket plus one new column:
+
+```sql
+insert into storage.buckets (id, name, public) values ('receipts', 'receipts', false);
+create policy "own receipt files" on storage.objects for all
+  using (bucket_id = 'receipts' and (storage.foldername(name))[1] = auth.uid()::text)
+  with check (bucket_id = 'receipts' and (storage.foldername(name))[1] = auth.uid()::text);
+
+alter table coin_transactions add column if not exists receipt_path text;
+```
+
+Private bucket (these are financial documents) — every object lives under `<user_id>/...`, and the policy scopes access to that folder matching `auth.uid()`, same ownership model as every table's RLS policy above but for Storage objects instead of rows. The app fetches images via a short-lived signed URL, never a public one.
+
 ## One-time data migration
 
 To bring over your existing 1,416 transactions from Ledger's `manual logs/ledger-import-all.json`, see `scripts/migrate.js` in this repo.
