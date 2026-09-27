@@ -4,11 +4,9 @@ import { toast, downloadFile, txnsToCsv, todayISO, formatMoney, confirmDialog, f
 
 // From `npx web-push generate-vapid-keys` — the public half is safe to ship
 // client-side by design (same idea as supabase.js's anon key), it just needs
-// to match VAPID_PRIVATE_KEY on the server (api/check-budget-alerts.js) or
-// every subscription made against this placeholder stops working once the
-// real keys are set. Replace after running that command — see
-// SUPABASE-SETUP.md's "Adding budget threshold push alerts" section.
-const VAPID_PUBLIC_KEY = 'REPLACE_WITH_YOUR_VAPID_PUBLIC_KEY'
+// to match VAPID_PRIVATE_KEY on the server (api/check-budget-alerts.js, set
+// as a Vercel env var, never committed) or subscriptions stop working.
+const VAPID_PUBLIC_KEY = 'BIpc_gh2sKjZIJeIs6idrop8Tth8SROQMyxz-fLCzj-5lXuO8axFF4p9Bfyv_n9ahV64SkR4Shit-NPiB23SH8U'
 import { ACCENTS, getMode, setMode, getAccent, setAccent } from '../theme.js'
 import { isPrivacyMode, setPrivacyMode } from '../privacy.js'
 import { latestAccountValues } from '../analysisData.js'
