@@ -1,8 +1,10 @@
 import { Chart, registerables } from 'chart.js'
-import { dailySpend, categoryBreakdown, monthlyRollup, heatmapData, generateInsights, computeProjection, computePersonalRecords, netWorthTimeline } from '../analysisData.js'
+import { dailySpend, categoryBreakdown, monthlyRollup, heatmapData, generateInsights, computeProjection, computePersonalRecords } from '../analysisData.js'
 import { getAchievementDefs } from '../achievements.js'
 import { formatMoney, localISO, toast, formatDateDMY } from '../helpers.js'
-import { isPrivacyMode, setPrivacyMode } from '../privacy.js'
+import { isPrivacyMode, setPrivacyMode, privacyToggleHtml } from '../privacy.js'
+import { isDesktopView } from '../platform.js'
+import { renderInvestmentDepth, renderNetWorthSummaryCard } from './analysisInvestments.js'
 
 Chart.register(...registerables)
 
@@ -29,11 +31,6 @@ function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 }
 
-function privacyToggleHtml(id) {
-  const on = isPrivacyMode()
-  return `<button class="privacy-toggle-btn" id="${id}" title="${on ? 'Show balances' : 'Hide balances'}">${on ? '🙈' : '👁️'}</button>`
-}
-
 export function renderAnalysis(container, opts) {
   const { txns, budgets, recurring, networth } = opts
   const privacyOn = isPrivacyMode()
@@ -58,11 +55,7 @@ export function renderAnalysis(container, opts) {
     <h2>Activity Heatmap</h2>
     <div class="card"><div id="heatmap"></div></div>
 
-    <div class="top-bar" style="margin-top:6px"><h2 style="margin:0">Net Worth</h2>${privacyToggleHtml('privacyToggleNw')}</div>
-    <div class="privacy-wrap${privacyOn ? ' active' : ''}">
-      <div class="card"><div class="chart-box"><canvas id="networthChart"></canvas></div></div>
-      <div class="privacy-overlay">🔒 Balances hidden</div>
-    </div>
+    <div id="investmentSection"></div>
 
     <div class="top-bar" style="margin-top:6px"><h2 style="margin:0">Projection</h2>${privacyToggleHtml('privacyToggleProj')}</div>
     <div class="privacy-wrap${privacyOn ? ' active' : ''}">
@@ -86,10 +79,29 @@ export function renderAnalysis(container, opts) {
     btn.onclick = () => { period = Number(btn.dataset.period); renderAnalysis(container, opts) }
   })
 
+  renderTrendChart(container, txns)
+  renderCategoryChart(container, txns)
+  renderRollupChart(container, txns)
+  renderInsights(container, txns)
+  renderHeatmap(container, txns)
+  // Desktop/mobile fork point (Phase 3) — both branches render the same
+  // chart today; Phase 4 gives desktop real per-holding depth and mobile a
+  // netwrth.app-style summary card instead.
+  const investmentSection = container.querySelector('#investmentSection')
+  if (isDesktopView()) renderInvestmentDepth(investmentSection, networth || [])
+  else renderNetWorthSummaryCard(investmentSection, networth || [])
+  renderProjectionSection(container, txns, networth || [])
+  renderPersonalRecords(container, txns)
+  renderAchievements(container, txns, budgets, recurring)
+
   // Hiding balances is a pure CSS toggle (.privacy-wrap.active blurs the
   // card) — it used to call renderAnalysis() here, which re-ran every
-  // analytics scan and destroyed/rebuilt all 5 charts just to flip a class,
-  // causing a visible stutter right when someone's about to show their screen.
+  // analytics scan and destroyed/rebuilt all charts just to flip a class,
+  // causing a visible stutter right when someone's about to show their
+  // screen. Wired last, after the investment section above has rendered its
+  // own privacy-toggle button into the DOM — both buttons mirror the same
+  // isPrivacyMode() flag and toggle every .privacy-wrap under this
+  // container, not just their own section's.
   ;['privacyToggleNw', 'privacyToggleProj'].forEach(id => {
     const btn = container.querySelector('#' + id)
     if (btn) btn.onclick = () => {
@@ -102,16 +114,6 @@ export function renderAnalysis(container, opts) {
       })
     }
   })
-
-  renderTrendChart(container, txns)
-  renderCategoryChart(container, txns)
-  renderRollupChart(container, txns)
-  renderInsights(container, txns)
-  renderHeatmap(container, txns)
-  renderNetWorthChart(container, networth || [])
-  renderProjectionSection(container, txns, networth || [])
-  renderPersonalRecords(container, txns)
-  renderAchievements(container, txns, budgets, recurring)
 }
 
 function renderPersonalRecords(container, txns) {
@@ -129,66 +131,6 @@ function renderPersonalRecords(container, txns) {
       <div class="record-date">${r.date ? formatDateDMY(r.date) : (r.dateLabel || '')}</div>
     </div>
   `).join('')
-}
-
-function renderNetWorthChart(container, networth) {
-  const canvas = container.querySelector('#networthChart')
-  container.querySelector('#networthEmpty')?.remove()
-
-  const timeline = netWorthTimeline(networth)
-  if (!timeline.length) {
-    canvas.style.display = 'none'
-    canvas.insertAdjacentHTML('afterend', '<div class="empty-state" id="networthEmpty">No check-ins yet — add one in Settings → Net Worth.</div>')
-    return
-  }
-  canvas.style.display = ''
-
-  const labels = timeline.map(n => new Date(n.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: '2-digit' }))
-  const text3 = cssVar('--text3')
-  const grid = cssVar('--chart-grid')
-  const c1 = cssVar('--chart-1')
-  const c3 = cssVar('--chart-3')
-  const c5 = cssVar('--chart-5')
-  const accent = cssVar('--accent')
-  const hasInsurance = timeline.some(n => n.insurance > 0)
-
-  renderChart('networth', canvas, {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [
-        {
-          label: 'Total', data: timeline.map(n => n.total),
-          borderColor: accent, backgroundColor: accent + '22', borderWidth: 3,
-          fill: true, tension: 0.3, pointRadius: 3,
-        },
-        {
-          label: 'Cash', data: timeline.map(n => n.cash),
-          borderColor: c1, borderWidth: 1.5, borderDash: [4, 3], fill: false, tension: 0.3, pointRadius: 2,
-        },
-        {
-          label: 'Invested', data: timeline.map(n => n.invested),
-          borderColor: c3, borderWidth: 1.5, borderDash: [4, 3], fill: false, tension: 0.3, pointRadius: 2,
-        },
-        ...(hasInsurance ? [{
-          label: 'Insurance', data: timeline.map(n => n.insurance),
-          borderColor: c5, borderWidth: 1.5, borderDash: [4, 3], fill: false, tension: 0.3, pointRadius: 2,
-        }] : []),
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { position: 'top', align: 'end', labels: { color: text3, font: { size: 11 }, boxWidth: 10, usePointStyle: true } },
-        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${formatMoney(ctx.parsed.y)}` } },
-      },
-      scales: {
-        x: { ticks: { color: text3, font: { size: 10 } }, grid: { display: false } },
-        y: { ticks: { color: text3, font: { size: 10 }, callback: v => formatMoney(v) }, grid: { color: grid } },
-      },
-    },
-  })
 }
 
 function renderProjectionSection(container, txns, networth) {

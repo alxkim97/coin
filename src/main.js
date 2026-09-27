@@ -10,10 +10,18 @@ import { renderAsk } from './views/ask.js'
 import { toast, cacheData, getCachedData, todayISO, advanceDate } from './helpers.js'
 import { categoryBudgetType } from './categories.js'
 import { applyTheme } from './theme.js'
+import { onDesktopViewChange } from './platform.js'
 
 applyTheme()
 
 const app = document.getElementById('app')
+
+// render() already fully rebuilds #app on every state change, so reacting to
+// a desktop/mobile breakpoint crossing this way (rather than a resize
+// listener with its own diffing) is consistent with the existing pattern,
+// not new architecture. Lets Analysis's investment section (and anything
+// else that forks by isDesktopView()) swap live instead of only on next nav.
+onDesktopViewChange(() => render())
 
 const now = new Date()
 const state = {
