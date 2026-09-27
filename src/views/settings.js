@@ -135,6 +135,12 @@ export function renderSettings(container, opts) {
       ${isPrivacyMode() ? '<div class="privacy-overlay">🔒 Balances hidden</div>' : ''}
     </div>
 
+    <h2>Year in Review</h2>
+    <div class="card" style="margin-bottom:16px">
+      <div style="font-size:13px;color:var(--text2);margin-bottom:12px">A recap of any year you've logged — income, spending, top categories, and personal records.</div>
+      <button class="btn secondary" id="yearReviewBtn">View Year in Review</button>
+    </div>
+
     <h2>Data</h2>
     <div class="card" style="margin-bottom:16px">
       <div style="font-size:13px;color:var(--text2);margin-bottom:12px">Export all ${txns.length} transaction${txns.length === 1 ? '' : 's'} as a backup or to open in a spreadsheet.</div>
@@ -170,6 +176,8 @@ export function renderSettings(container, opts) {
   container.querySelector('#accentSwatches').querySelectorAll('button').forEach(btn => {
     btn.onclick = () => { setAccent(btn.dataset.accent); renderSettings(container, opts) }
   })
+
+  container.querySelector('#yearReviewBtn').onclick = () => opts.onViewYearReview()
 
   container.querySelector('#exportCsv').onclick = () => {
     downloadFile(`coin-transactions-${todayISO()}.csv`, txnsToCsv(txns), 'text/csv')

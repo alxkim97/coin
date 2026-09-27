@@ -7,6 +7,7 @@ import { renderDashboard } from './views/dashboard.js'
 import { renderAnalysis } from './views/analysis.js'
 import { renderSettings } from './views/settings.js'
 import { renderAsk } from './views/ask.js'
+import { renderYearReview } from './views/yearReview.js'
 import { toast, cacheData, getCachedData, todayISO, advanceDate } from './helpers.js'
 import { categoryBudgetType } from './categories.js'
 import { applyTheme } from './theme.js'
@@ -256,6 +257,12 @@ function renderImmediate() {
       onNetWorthChanged: async () => { await loadNetWorth(); render() },
       onSessionChanged: async () => { state.session = await getSession(); render() },
       onSignedOut: () => { state.session = null; render() },
+      onViewYearReview: () => setView('yearReview'),
+    })
+  } else if (state.view === 'yearReview') {
+    renderYearReview(screen, {
+      txns: state.txns,
+      onBack: () => setView('settings'),
     })
   } else if (state.view === 'ask') {
     renderAsk(screen, {

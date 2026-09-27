@@ -232,7 +232,11 @@ export function computeProjection(txns, networth, months = 12) {
 // All-time highlight stats — separate from generateInsights (which is a
 // rolling 30-day behavior read); these are "personal bests" that only move
 // when a new record is actually set, so they don't churn month to month.
-export function computePersonalRecords(txns) {
+// `asOf` bounds the no-spend-streak walk (defaults to today, the original
+// all-time behavior) — computeYearReview passes a year's Dec 31 (or today,
+// if the year isn't over yet) so a review of an old year doesn't silently
+// walk the streak all the way through the present.
+export function computePersonalRecords(txns, asOf = new Date()) {
   if (!txns.length) return []
 
   const incomeByDate = {}, expenseByDate = {}
@@ -256,10 +260,10 @@ export function computePersonalRecords(txns) {
   // full history so far (first-ever transaction through today).
   const allDates = [...new Set(txns.map(t => t.date))].sort()
   const expenseDates = new Set(txns.filter(t => t.type === 'expense').map(t => t.date))
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
+  const walkEnd = new Date(asOf)
+  walkEnd.setHours(0, 0, 0, 0)
   let longest = 0, current = 0, longestEnd = null
-  for (let d = new Date(allDates[0] + 'T00:00:00'); d <= today; d.setDate(d.getDate() + 1)) {
+  for (let d = new Date(allDates[0] + 'T00:00:00'); d <= walkEnd; d.setDate(d.getDate() + 1)) {
     const ds = localISO(d)
     if (expenseDates.has(ds)) {
       current = 0
@@ -292,6 +296,59 @@ export function computePersonalRecords(txns) {
     records.push({ icon: '📈', label: 'Best Savings Month', value: formatMoney(bestMonth.net), dateLabel: new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) })
   }
   return records
+}
+
+// A year's recap — total income/expense/savings, top categories, a
+// prior-year comparison when there's data for it, and computePersonalRecords
+// re-scoped to the year by simply pre-filtering txns first (it has no
+// internal date logic that assumes "now", so this needed no changes there).
+export function computeYearReview(txns, year) {
+  const yearStr = String(year)
+  const yearTxns = txns.filter(t => t.date.slice(0, 4) === yearStr)
+  const prevYearTxns = txns.filter(t => t.date.slice(0, 4) === String(year - 1))
+
+  let totalIncome = 0, totalExpense = 0
+  const categorySums = {}
+  for (const t of yearTxns) {
+    if (t.type === 'income') totalIncome += Number(t.amount)
+    else {
+      totalExpense += Number(t.amount)
+      categorySums[t.category] = (categorySums[t.category] || 0) + Number(t.amount)
+    }
+  }
+  const topCategories = Object.entries(categorySums)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([category, amount]) => ({ category, amount }))
+
+  let prevIncome = 0, prevExpense = 0
+  for (const t of prevYearTxns) {
+    if (t.type === 'income') prevIncome += Number(t.amount)
+    else prevExpense += Number(t.amount)
+  }
+  const hasPrevYear = prevYearTxns.length > 0
+  const incomeChangePct = hasPrevYear && prevIncome > 0 ? ((totalIncome - prevIncome) / prevIncome) * 100 : null
+  const expenseChangePct = hasPrevYear && prevExpense > 0 ? ((totalExpense - prevExpense) / prevExpense) * 100 : null
+
+  const netSaved = totalIncome - totalExpense
+  const savingsRate = totalIncome > 0 ? (netSaved / totalIncome) * 100 : null
+  const activeMonths = new Set(yearTxns.map(t => t.date.slice(0, 7))).size
+
+  // Bounds the no-spend-streak walk inside computePersonalRecords to this
+  // year — Dec 31 for a past year, today if the year isn't over yet — so
+  // reviewing e.g. 2024 doesn't walk that streak all the way through today.
+  const yearEnd = new Date(year, 11, 31)
+  const now = new Date()
+  const recordsAsOf = yearEnd < now ? yearEnd : now
+
+  return {
+    year,
+    hasData: yearTxns.length > 0,
+    totalIncome, totalExpense, netSaved, savingsRate, activeMonths,
+    topCategories,
+    incomeChangePct, expenseChangePct,
+    personalRecords: computePersonalRecords(yearTxns, recordsAsOf),
+  }
 }
 
 export function generateInsights(txns) {
