@@ -1,6 +1,6 @@
 import { Chart } from 'chart.js'
-import { netWorthTimeline } from '../analysisData.js'
-import { formatMoney } from '../helpers.js'
+import { netWorthTimeline, netWorthChangePct, accountReturns } from '../analysisData.js'
+import { formatMoney, formatDateDMY, escapeHtml } from '../helpers.js'
 import { isPrivacyMode, privacyToggleHtml } from '../privacy.js'
 
 // Chart.js's registerables are already registered once, at module load, by
@@ -17,42 +17,106 @@ function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 }
 
-// Phase 3 of the design-evolution plan: wires the desktop/mobile fork point
-// in analysis.js without changing behavior yet — both branches render
-// today's net-worth chart unchanged. Phase 4 replaces renderInvestmentDepth
-// with real per-holding rows + sparklines (KevFin-style) and
-// renderNetWorthSummaryCard with a netwrth.app-style hero card.
+const CATEGORY_ICON = { cash: '💵', invested: '📈', insurance: '🛡️' }
+const CATEGORY_LABEL = { cash: 'Cash', invested: 'Invested', insurance: 'Insurance' }
+const CATEGORY_ORDER = ['cash', 'invested', 'insurance']
+
+function changeBadgeHtml(changePct) {
+  if (changePct == null) return ''
+  const sign = changePct >= 0 ? 'pos' : 'neg'
+  const arrow = changePct >= 0 ? '▲' : '▼'
+  return `<div class="holding-change ${sign}">${arrow} ${Math.abs(changePct).toFixed(1)}%</div>`
+}
+
+// Desktop: KevFin-style density — the same total/cash/invested/insurance
+// trend chart as before, plus every holding broken out individually with
+// its own current value, return %, and a tiny sparkline.
 export function renderInvestmentDepth(container, networth) {
-  renderNetWorthSection(container, networth)
-}
-
-export function renderNetWorthSummaryCard(container, networth) {
-  renderNetWorthSection(container, networth)
-}
-
-function renderNetWorthSection(container, networth) {
   const privacyOn = isPrivacyMode()
+
+  // Gated on the timeline, not accountReturns — a check-in from before
+  // multi-asset support has no per-account items at all (just legacy
+  // cash/invested fields, which only netWorthTimeline's fallback reads), so
+  // it wouldn't show up as any account here even though it's real history.
+  if (!netWorthTimeline(networth).length) {
+    container.innerHTML = `
+      <div class="top-bar" style="margin-top:6px"><h2 style="margin:0">Net Worth</h2></div>
+      <div class="card"><div class="empty-state">No check-ins yet — add one in Settings → Net Worth.</div></div>
+    `
+    return
+  }
+
+  const returns = accountReturns(networth)
+  const groups = { cash: [], invested: [], insurance: [] }
+  for (const r of returns) {
+    const bucket = groups[r.category] ? r.category : 'invested' // unrecognized future category — grouped with invested, same rule netWorthTimeline uses
+    groups[bucket].push(r)
+  }
+  for (const key of CATEGORY_ORDER) groups[key].sort((a, b) => b.lastValue - a.lastValue)
+
   container.innerHTML = `
     <div class="top-bar" style="margin-top:6px"><h2 style="margin:0">Net Worth</h2>${privacyToggleHtml('privacyToggleNw')}</div>
     <div class="privacy-wrap${privacyOn ? ' active' : ''}">
       <div class="card"><div class="chart-box"><canvas id="networthChart"></canvas></div></div>
+      ${CATEGORY_ORDER.filter(k => groups[k].length).map(k => `
+        <h2 style="margin-top:16px">${CATEGORY_LABEL[k]}</h2>
+        <div class="card">
+          ${groups[k].map(r => holdingRowHtml(r)).join('')}
+        </div>
+      `).join('')}
       <div class="privacy-overlay">🔒 Balances hidden</div>
     </div>
   `
-  renderNetWorthChart(container, networth)
+
+  renderTotalChart(container, networth)
+  for (const key of CATEGORY_ORDER) {
+    for (const r of groups[key]) renderSparkline(container, r)
+  }
 }
 
-function renderNetWorthChart(container, networth) {
-  const canvas = container.querySelector('#networthChart')
-  container.querySelector('#networthEmpty')?.remove()
+function holdingRowHtml(r) {
+  const slug = r.name.replace(/[^a-z0-9]/gi, '-').toLowerCase()
+  return `
+    <div class="holding-row">
+      <div class="holding-icon">${CATEGORY_ICON[r.category] || '💰'}</div>
+      <div class="holding-main">
+        <div class="holding-name">${escapeHtml(r.name)}</div>
+        <div class="holding-meta">as of ${formatDateDMY(r.lastDate)}</div>
+      </div>
+      <div class="holding-spark"><canvas id="spark-${slug}"></canvas></div>
+      <div class="holding-vals">
+        <div class="holding-value">${formatMoney(r.lastValue)}</div>
+        ${changeBadgeHtml(r.changePct)}
+      </div>
+    </div>
+  `
+}
 
+function renderSparkline(container, r) {
+  const slug = r.name.replace(/[^a-z0-9]/gi, '-').toLowerCase()
+  const canvas = container.querySelector(`#spark-${slug}`)
+  if (!canvas || r.points.length < 2) { canvas?.closest('.holding-spark')?.remove(); return }
+
+  const color = cssVar(r.changePct != null && r.changePct < 0 ? '--red' : '--green')
+  renderChart(`spark-${slug}`, canvas, {
+    type: 'line',
+    data: {
+      labels: r.points.map(p => p.date),
+      datasets: [{ data: r.points.map(p => p.value), borderColor: color, borderWidth: 1.5, fill: false, tension: 0.3, pointRadius: 0 }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: { x: { display: false }, y: { display: false } },
+    },
+  })
+}
+
+function renderTotalChart(container, networth) {
+  const canvas = container.querySelector('#networthChart')
   const timeline = netWorthTimeline(networth)
-  if (!timeline.length) {
-    canvas.style.display = 'none'
-    canvas.insertAdjacentHTML('afterend', '<div class="empty-state" id="networthEmpty">No check-ins yet — add one in Settings → Net Worth.</div>')
-    return
-  }
-  canvas.style.display = ''
 
   const labels = timeline.map(n => new Date(n.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: '2-digit' }))
   const text3 = cssVar('--text3')
@@ -100,4 +164,33 @@ function renderNetWorthChart(container, networth) {
       },
     },
   })
+}
+
+// Mobile: netwrth.app-style hero card — one big number + a trend badge,
+// nothing else. Per-holding depth is a desktop-only feature in this pass.
+export function renderNetWorthSummaryCard(container, networth) {
+  const timeline = netWorthTimeline(networth)
+  const privacyOn = isPrivacyMode()
+
+  if (!timeline.length) {
+    container.innerHTML = `
+      <div class="top-bar" style="margin-top:6px"><h2 style="margin:0">Net Worth</h2></div>
+      <div class="card"><div class="empty-state">No check-ins yet — add one in Settings → Net Worth.</div></div>
+    `
+    return
+  }
+
+  const total = timeline[timeline.length - 1].total
+  const changePct = netWorthChangePct(networth)
+
+  container.innerHTML = `
+    <div class="top-bar" style="margin-top:6px"><h2 style="margin:0">Net Worth</h2>${privacyToggleHtml('privacyToggleNw')}</div>
+    <div class="privacy-wrap${privacyOn ? ' active' : ''}">
+      <div class="card nw-hero-card">
+        <div class="nw-hero-value">${formatMoney(total)}</div>
+        ${changePct != null ? `<div class="nw-hero-trend ${changePct >= 0 ? 'pos' : 'neg'}">${changePct >= 0 ? '▲' : '▼'} ${Math.abs(changePct).toFixed(1)}% since first check-in</div>` : ''}
+      </div>
+      <div class="privacy-overlay">🔒 Balances hidden</div>
+    </div>
+  `
 }

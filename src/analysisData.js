@@ -138,6 +138,52 @@ export function netWorthTimeline(networth) {
   return points
 }
 
+// Percent change in total net worth between the first and last check-in
+// points — a trend badge only needs the two endpoints, not the full series,
+// so this stays a thin wrapper over netWorthTimeline rather than its own scan.
+export function netWorthChangePct(networth) {
+  const points = netWorthTimeline(networth)
+  if (points.length < 2) return null
+  const first = points[0].total
+  const last = points[points.length - 1].total
+  if (first === 0) return null
+  return ((last - first) / Math.abs(first)) * 100
+}
+
+// Per-account analogue of netWorthTimeline: one entry per account (same
+// lowercase-name identity model as latestAccountValues — renaming an
+// account looks like a new one with no history, a pre-existing limitation,
+// not a regression here), each with its own {date, value} series across
+// every check-in that mentioned it, instead of collapsing into the three
+// category totals.
+export function accountHistory(networth) {
+  const sorted = sortByDateAsc(networth || [])
+  const byName = new Map()
+  for (const checkin of sorted) {
+    for (const item of (checkin.items || [])) {
+      const key = item.name.trim().toLowerCase()
+      if (!byName.has(key)) byName.set(key, { name: item.name, category: item.category, points: [] })
+      const entry = byName.get(key)
+      entry.category = item.category // keep the most recent category label, in case it was ever recategorized
+      entry.points.push({ date: checkin.date, value: Number(item.value) })
+    }
+  }
+  return [...byName.values()]
+}
+
+// Pure derived math off accountHistory — no new data needed. changePct is
+// null (not 0 or NaN) when the account started at ฿0, since "% change from
+// zero" isn't a meaningful number to show.
+export function accountReturns(networth) {
+  return accountHistory(networth).map(({ name, category, points }) => {
+    const first = points[0]
+    const last = points[points.length - 1]
+    const changeAbs = last.value - first.value
+    const changePct = first.value !== 0 ? (changeAbs / Math.abs(first.value)) * 100 : null
+    return { name, category, firstDate: first.date, firstValue: first.value, lastDate: last.date, lastValue: last.value, changeAbs, changePct, points }
+  })
+}
+
 // Forward-looking net worth projection from trailing complete-month averages
 // (not the current in-progress month, which would understate spend). Starts
 // from the latest check-in if one exists, else from ฿0 — either way it's
