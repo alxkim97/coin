@@ -236,8 +236,11 @@ alter table coin_push_subscriptions enable row level security;
 create policy "own rows" on coin_push_subscriptions for all
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
--- Written only by api/check-budget-alerts.js via the service-role key, not
--- from the client — no RLS policy needed the way the tables above have one.
+-- Written only by api/check-budget-alerts.js via the service-role key, which
+-- bypasses RLS regardless — enabled with no policies so anon/authenticated
+-- clients are flat-out denied instead of implicitly allowed (Supabase Studio
+-- flags a table with RLS off as a warning when you run this; choose "Run and
+-- enable RLS" rather than "Run without RLS").
 create table coin_budget_alerts_sent (
   user_id uuid not null,
   category text not null,
@@ -245,6 +248,7 @@ create table coin_budget_alerts_sent (
   sent_at timestamptz not null default now(),
   primary key (user_id, category, month)
 );
+alter table coin_budget_alerts_sent enable row level security;
 ```
 
 A daily Vercel Cron job (`api/check-budget-alerts.js`) checks everyone's current-month spend per category against `coin_budgets.monthly_limit` and sends a push notification the first time a category crosses 90% or 100% that month — `coin_budget_alerts_sent` is just a dedupe log so it doesn't repeat.
