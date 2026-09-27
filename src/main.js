@@ -42,6 +42,12 @@ async function loadData() {
     state.budgets = cached.budgets
     toast('Offline — showing your last synced data')
   }
+  try {
+    state.recurring = await fetchRecurring()
+  } catch {
+    // table may not exist yet on an older install, or we're offline — keep
+    // whatever's already in memory rather than failing the whole refresh
+  }
 }
 
 async function loadNetWorth() {
@@ -179,6 +185,8 @@ function render() {
       onRangeChange: setRange,
       networth: state.networth,
       onNetWorthChanged: async () => { await loadNetWorth(); render() },
+      recurring: state.recurring,
+      onBillsChanged: async () => { await loadData(); render() },
     })
   } else if (state.view === 'transactions') {
     renderTransactions(screen, {
@@ -194,7 +202,7 @@ function render() {
       editingTxn: state.editingTxn,
       recurring: state.recurring,
       txns: state.txns,
-      onSaved: () => refreshAndRender('transactions'),
+      onSaved: (stayOnAdd) => refreshAndRender(stayOnAdd ? undefined : 'transactions'),
     })
   } else if (state.view === 'analysis') {
     renderAnalysis(screen, {

@@ -13,6 +13,9 @@ dist-ssr
 release
 *.local
 
+# CSV exports contain real transaction data — never commit these
+exports
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

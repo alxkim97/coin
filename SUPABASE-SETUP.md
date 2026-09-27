@@ -147,6 +147,20 @@ alter table coin_recurring add column if not exists is_credit_card boolean not n
 
 Lets a repeat purchase (Settings → Repeat Purchases, or the checkbox on Add Transaction) carry the same flag, so transactions it auto-posts show the 💳 badge too.
 
+## Adding the "Remind" repeat-purchase mode (2026-09-02)
+
+Run this once — additive, existing Automatic/Quick Pick rows are untouched (`installments_paid` defaults to 0, `installments_total` to null so nothing auto-stops unless you set it):
+
+```sql
+alter table coin_recurring drop constraint coin_recurring_mode_check;
+alter table coin_recurring add constraint coin_recurring_mode_check
+  check (mode in ('auto', 'quick', 'remind'));
+alter table coin_recurring add column if not exists installments_total integer;
+alter table coin_recurring add column if not exists installments_paid integer not null default 0;
+```
+
+A third repeat-purchase mode for anything that shouldn't silently post itself (Auto) or wait to be manually picked (Quick) — a due or overdue item shows up under **Bills Due** on the Dashboard instead, where you confirm the amount and date and tap Mark Paid. Handles three cases the old modes didn't: a card autopay that can fail (so the date arriving doesn't necessarily mean it was paid), a utility bill whose due date shifts cycle to cycle (the amount/date are editable at confirm time, not locked to what was typed when the reminder was created), and a fixed-term installment like a 0%-interest purchase plan — set `installments_total` (e.g. 10) and it auto-deactivates once that many payments are confirmed, instead of reminding forever.
+
 ## Adding the Shopee flag (2026-08-18)
 
 Run this once — additive, existing rows default to `false`:

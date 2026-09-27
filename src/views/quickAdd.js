@@ -46,6 +46,7 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
   let saveAsRecurring = false
   let recurMode = 'auto'
   let recurFrequency = 'monthly'
+  let recurInstallmentsTotal = ''
   let isCreditCard = editingTxn?.is_credit_card || false
   let isShopee = editingTxn?.is_shopee || false
 
@@ -124,19 +125,26 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
         ${saveAsRecurring ? `
           <div class="toggle-row" id="recurModeToggle" style="margin-top:12px">
             <button type="button" data-mode="auto" class="${recurMode === 'auto' ? 'active' : ''}">Automatic</button>
+            <button type="button" data-mode="remind" class="${recurMode === 'remind' ? 'active' : ''}">Remind</button>
             <button type="button" data-mode="quick" class="${recurMode === 'quick' ? 'active' : ''}">Quick Pick</button>
           </div>
-          ${recurMode === 'auto' ? `
+          ${recurMode === 'auto' || recurMode === 'remind' ? `
             <label>Frequency</label>
             <select id="recurFrequency">
               ${FREQUENCIES.map(f => `<option value="${f}" ${f === recurFrequency ? 'selected' : ''}>${frequencyLabel(f)}</option>`).join('')}
             </select>
+            ${recurMode === 'remind' ? `
+              <label>Number of Payments (optional)</label>
+              <input id="recurInstallmentsTotal" type="number" inputmode="numeric" min="1" placeholder="Leave blank if ongoing, e.g. rent" value="${recurInstallmentsTotal}" />
+              <div style="font-size:12px;color:var(--text2);margin-top:8px">Shows under Bills Due on the Dashboard when due — you confirm and mark it paid, nothing posts on its own. Set a payment count for a fixed-term installment that should stop itself.</div>
+            ` : ''}
           ` : `<div style="font-size:12px;color:var(--text2);margin-top:8px">Shows up as a one-tap chip under Frequently Used — you log it manually each time.</div>`}
         ` : ''}
       </div>
 
       <div style="margin-top:22px;display:flex;flex-direction:column;gap:10px">
         <button class="btn" id="saveBtn">${isEdit ? 'Save Changes' : 'Add Transaction'}</button>
+        ${!isEdit ? '<button class="btn secondary" id="saveAndAddBtn">Save & Add Another</button>' : ''}
         ${isEdit ? '<button class="btn secondary" id="cancelBtn">Cancel</button>' : ''}
         ${isEdit ? '<button class="btn danger" id="deleteBtn">Delete</button>' : ''}
       </div>
@@ -211,7 +219,9 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
       btn.onclick = () => { recurMode = btn.dataset.mode; draw() }
     })
     container.querySelector('#recurFrequency')?.addEventListener('change', e => { recurFrequency = e.target.value })
-    container.querySelector('#saveBtn').onclick = save
+    container.querySelector('#recurInstallmentsTotal')?.addEventListener('input', e => { recurInstallmentsTotal = e.target.value })
+    container.querySelector('#saveBtn').onclick = () => save(false)
+    container.querySelector('#saveAndAddBtn')?.addEventListener('click', () => save(true))
     container.querySelector('#cancelBtn')?.addEventListener('click', () => onSaved())
     container.querySelector('#deleteBtn')?.addEventListener('click', async () => {
       const ok = await confirmDialog('Delete this transaction?', 'Delete', true)
@@ -228,13 +238,15 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
     if (!isEdit) container.querySelector('#amountInput').focus()
   }
 
-  async function save() {
+  async function save(stayOnAdd) {
     const amt = parseFloat(amount)
     if (!amt || amt <= 0) { toast('Enter a valid amount'); return }
     if (!category) { toast('Pick a category'); return }
-    const btn = container.querySelector('#saveBtn')
+    const btn = container.querySelector(stayOnAdd ? '#saveAndAddBtn' : '#saveBtn')
+    const otherBtn = container.querySelector(stayOnAdd ? '#saveBtn' : '#saveAndAddBtn')
     btn.disabled = true
     btn.textContent = 'Saving…'
+    if (otherBtn) otherBtn.disabled = true
     try {
       const payload = {
         type,
@@ -255,29 +267,43 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
       let msg = isEdit ? 'Transaction updated' : 'Added'
       if (saveAsRecurring) {
         try {
+          const isDated = recurMode === 'auto' || recurMode === 'remind'
+          // this save() call is itself logging the first real payment, so a
+          // Remind item starts already at "1 of N paid," due date advanced
+          // to the next period — not "0 of N," which would double-count it
+          const installmentsTotal = recurMode === 'remind' && recurInstallmentsTotal ? parseInt(recurInstallmentsTotal, 10) : null
           await addRecurring({
             type,
             category,
             subcategory: subcategory || null,
             amount: amt,
             mode: recurMode,
-            frequency: recurMode === 'auto' ? recurFrequency : null,
-            next_due: recurMode === 'auto' ? firstDueOnOrAfter(date, recurFrequency) : null,
-            active: true,
+            frequency: isDated ? recurFrequency : null,
+            // 'auto' fast-forwards past a backdated date — auto items
+            // self-post via processRecurring's catch-up loop, so a next_due
+            // left in the past means a pile of unwanted duplicate
+            // transactions on next launch. 'remind' items never auto-post
+            // (a human confirms and marks them paid), so a backdated bill
+            // correctly shows as due right away instead of being suppressed.
+            next_due: recurMode === 'auto' ? firstDueOnOrAfter(date, recurFrequency) : (isDated ? advanceDate(date, recurFrequency) : null),
+            installments_total: installmentsTotal,
+            installments_paid: recurMode === 'remind' ? 1 : 0,
+            active: !(recurMode === 'remind' && installmentsTotal != null && installmentsTotal <= 1),
             is_credit_card: type === 'expense' ? isCreditCard : false,
-        is_shopee: type === 'expense' ? isShopee : false,
+            is_shopee: type === 'expense' ? isShopee : false,
           })
           msg += ' · saved as repeat purchase'
         } catch (e) {
           msg += ' — but repeat purchase setup failed'
         }
       }
-      toast(msg)
-      onSaved()
+      toast(stayOnAdd ? `${msg} · ready for the next one` : msg)
+      onSaved(stayOnAdd)
     } catch (e) {
       toast(e.message || 'Failed to save')
       btn.disabled = false
-      btn.textContent = isEdit ? 'Save Changes' : 'Add Transaction'
+      btn.textContent = stayOnAdd ? 'Save & Add Another' : (isEdit ? 'Save Changes' : 'Add Transaction')
+      if (otherBtn) otherBtn.disabled = false
     }
   }
 

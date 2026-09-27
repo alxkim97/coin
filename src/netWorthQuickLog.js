@@ -1,7 +1,7 @@
 import { addNetWorth } from './supabase.js'
 import { toast, todayISO, dmyDateFieldHtml, wireDmyDateField } from './helpers.js'
 import { latestAccountValues } from './analysisData.js'
-import { seedNetWorthItems, netWorthItemRowsHtml, wireNetWorthItemRows, cleanNetWorthItems } from './netWorthForm.js'
+import { seedNetWorthItems, netWorthItemRowsHtml, wireNetWorthItemRows, cleanNetWorthItems, findInvalidNetWorthItem } from './netWorthForm.js'
 
 // Pre-fills from every account's latest known value across ALL check-ins —
 // not just whichever check-in happened to be most recent — so logging just
@@ -61,6 +61,8 @@ export function openNetWorthQuickLog({ networth, onSaved }) {
   }
 
   async function save() {
+    const invalidRow = findInvalidNetWorthItem(items)
+    if (invalidRow) { toast(`Can't work out "${invalidRow.value}" for ${invalidRow.name.trim()}`); return }
     const cleaned = cleanNetWorthItems(items)
     if (!date) { toast('Pick a date'); return }
     if (!cleaned.length) { toast('Enter at least one balance'); return }
