@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Tray, Menu } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, globalShortcut } = require('electron')
 const path = require('path')
 const { autoUpdater } = require('electron-updater')
 
@@ -74,6 +74,18 @@ function createTray() {
   tray.setToolTip('Coin')
   rebuildTrayMenu()
   tray.on('click', () => { mainWindow.show(); mainWindow.focus() })
+}
+
+// Same show/focus idiom as the tray click and second-instance handlers above,
+// plus a 'navigate' push to the already-loaded renderer — the only
+// main-to-renderer IPC channel in the app so far (everything else is
+// renderer-initiated ipcMain.handle calls).
+function focusAndNavigate(view) {
+  if (!mainWindow) return
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.show()
+  mainWindow.focus()
+  mainWindow.webContents.send('navigate', view)
 }
 
 // Auto-update via electron-updater + GitHub Releases. A manual check (from
@@ -183,6 +195,11 @@ if (gotSingleInstanceLock) {
       setInterval(() => checkForUpdates(false), 4 * 60 * 60 * 1000)
     }
 
+    // Global shortcut works even when Coin is minimized to tray/background —
+    // the whole point, since that's its normal resting state (close-to-tray).
+    const registered = globalShortcut.register('CommandOrControl+Shift+A', () => focusAndNavigate('add'))
+    if (!registered) console.error('Failed to register global shortcut CommandOrControl+Shift+A')
+
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
     })
@@ -191,6 +208,10 @@ if (gotSingleInstanceLock) {
 
 app.on('before-quit', () => {
   isQuitting = true
+})
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll()
 })
 
 app.on('window-all-closed', () => {

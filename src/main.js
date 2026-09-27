@@ -29,6 +29,12 @@ const app = document.getElementById('app')
 // else that forks by isDesktopView()) swap live instead of only on next nav.
 onDesktopViewChange(() => render())
 
+// Electron's global shortcut (main.cjs, CommandOrControl+Shift+A) sends this
+// after focusing the window — setView isn't defined yet at this point in the
+// module (function declarations are hoisted, so this still resolves fine by
+// the time the event actually fires, well after boot() has run).
+window.electronAPI?.onNavigate?.((view) => setView(view))
+
 const now = new Date()
 const state = {
   session: null,
