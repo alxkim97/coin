@@ -258,6 +258,9 @@ function renderImmediate() {
       onSessionChanged: async () => { state.session = await getSession(); render() },
       onSignedOut: () => { state.session = null; render() },
       onViewYearReview: () => setView('yearReview'),
+      // backup restore can touch all four tables at once — one combined
+      // refresh instead of chaining the four single-table callbacks above
+      onDataRestored: async () => { await loadData(); await loadNetWorth(); render() },
     })
   } else if (state.view === 'yearReview') {
     renderYearReview(screen, {

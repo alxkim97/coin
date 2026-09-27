@@ -70,6 +70,18 @@ export async function deleteTransaction(id) {
   if (error) throw error
 }
 
+// Used by Settings' backup restore. Strips id/user_id/created_at so
+// Supabase assigns fresh ones and the column default fills user_id — these
+// always ADD rows, they never replace or dedupe against what's already
+// there (restoring the same backup twice doubles it, by design/documented).
+export async function bulkInsertTransactions(rows) {
+  const clean = rows.map(({ id, user_id, created_at, ...rest }) => rest)
+  if (!clean.length) return []
+  const { data, error } = await supa.from('coin_transactions').insert(clean).select()
+  if (error) throw error
+  return data
+}
+
 /* ── Budgets ── */
 
 export async function fetchBudgets() {
@@ -113,6 +125,15 @@ export async function deleteRecurring(id) {
   if (error) throw error
 }
 
+// See bulkInsertTransactions above — same restore-only, additive-only contract.
+export async function bulkInsertRecurring(rows) {
+  const clean = rows.map(({ id, user_id, created_at, ...rest }) => rest)
+  if (!clean.length) return []
+  const { data, error } = await supa.from('coin_recurring').insert(clean).select()
+  if (error) throw error
+  return data
+}
+
 /* ── Net worth check-ins ── */
 
 export async function fetchNetWorth() {
@@ -150,4 +171,20 @@ export async function addNetWorth({ date, items }) {
 export async function deleteNetWorth(id) {
   const { error } = await supa.from('coin_networth').delete().eq('id', id)
   if (error) throw error
+}
+
+// Restore-only, additive-only (see bulkInsertTransactions). Reuses
+// addNetWorth's own checkin+items+rollback logic for the common case;
+// falls back to inserting the checkin row directly for a legacy backup
+// entry that has no items (pre-multi-asset export), so its cash/invested
+// totals aren't silently dropped by addNetWorth's items-derive-the-totals logic.
+export async function bulkRestoreNetWorth(checkins) {
+  for (const c of checkins) {
+    if (c.items && c.items.length) {
+      await addNetWorth({ date: c.date, items: c.items.map(({ name, category, value }) => ({ name, category, value })) })
+    } else {
+      const { error } = await supa.from('coin_networth').insert({ date: c.date, cash: c.cash, invested: c.invested })
+      if (error) throw error
+    }
+  }
 }

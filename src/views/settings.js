@@ -1,5 +1,5 @@
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, BUDGET_TYPE_ORDER, CATEGORY_ICONS, FREQUENCIES } from '../categories.js'
-import { upsertBudget, signOut, addRecurring, updateRecurring, deleteRecurring, updateEmail, updateDisplayName, addNetWorth, deleteNetWorth } from '../supabase.js'
+import { upsertBudget, signOut, addRecurring, updateRecurring, deleteRecurring, updateEmail, updateDisplayName, addNetWorth, deleteNetWorth, bulkInsertTransactions, bulkInsertRecurring, bulkRestoreNetWorth } from '../supabase.js'
 import { toast, downloadFile, txnsToCsv, todayISO, formatMoney, confirmDialog, frequencyLabel, escapeHtml, computeSuggestedLimits, formatDateDMY, dmyDateFieldHtml, wireDmyDateField, sortByDateDesc } from '../helpers.js'
 import { ACCENTS, getMode, setMode, getAccent, setAccent } from '../theme.js'
 import { isPrivacyMode, setPrivacyMode } from '../privacy.js'
@@ -143,11 +143,16 @@ export function renderSettings(container, opts) {
 
     <h2>Data</h2>
     <div class="card" style="margin-bottom:16px">
-      <div style="font-size:13px;color:var(--text2);margin-bottom:12px">Export all ${txns.length} transaction${txns.length === 1 ? '' : 's'} as a backup or to open in a spreadsheet.</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:12px">Export all ${txns.length} transaction${txns.length === 1 ? '' : 's'} as a spreadsheet, or a full backup of everything in your account.</div>
       <div style="display:flex;gap:10px">
         <button class="btn secondary" id="exportCsv">Export CSV</button>
-        <button class="btn secondary" id="exportJson">Export JSON</button>
+        <button class="btn secondary" id="exportJson">Export Backup</button>
       </div>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <div style="font-size:13px;color:var(--text2);margin-bottom:12px">Restore transactions, budgets, repeat purchases, and net worth check-ins from a backup file. This <strong>adds</strong> records — it never replaces or removes anything already in your account, so restoring the same file twice will duplicate everything in it.</div>
+      <input type="file" accept="application/json" id="restoreFileInput" style="display:none" />
+      <button class="btn secondary" id="restoreBackupBtn">Restore from Backup…</button>
     </div>
 
     ${window.electronAPI?.isElectron ? `
@@ -183,7 +188,49 @@ export function renderSettings(container, opts) {
     downloadFile(`coin-transactions-${todayISO()}.csv`, txnsToCsv(txns), 'text/csv')
   }
   container.querySelector('#exportJson').onclick = () => {
-    downloadFile(`coin-transactions-${todayISO()}.json`, JSON.stringify(txns, null, 2), 'application/json')
+    const backup = { version: 1, exportedAt: new Date().toISOString(), txns, budgets, recurring, networth }
+    downloadFile(`coin-backup-${todayISO()}.json`, JSON.stringify(backup, null, 2), 'application/json')
+  }
+
+  container.querySelector('#restoreBackupBtn').onclick = () => container.querySelector('#restoreFileInput').click()
+  container.querySelector('#restoreFileInput').onchange = async (e) => {
+    const file = e.target.files[0]
+    e.target.value = '' // lets picking the same file again fire onchange a second time
+    if (!file) return
+
+    let backup
+    try {
+      backup = JSON.parse(await file.text())
+    } catch {
+      toast('Not a valid backup file')
+      return
+    }
+    if (!backup || typeof backup !== 'object' || !backup.version) {
+      toast('Not a valid backup file')
+      return
+    }
+
+    const counts = [
+      backup.txns?.length && `${backup.txns.length} transaction${backup.txns.length === 1 ? '' : 's'}`,
+      backup.budgets?.length && `${backup.budgets.length} budget${backup.budgets.length === 1 ? '' : 's'}`,
+      backup.recurring?.length && `${backup.recurring.length} repeat purchase${backup.recurring.length === 1 ? '' : 's'}`,
+      backup.networth?.length && `${backup.networth.length} net worth check-in${backup.networth.length === 1 ? '' : 's'}`,
+    ].filter(Boolean).join(', ')
+    if (!counts) { toast('Backup file is empty'); return }
+
+    const ok = await confirmDialog(`Import ${counts}? This adds new records — it won't replace or remove anything already in your account.`, 'Import', false)
+    if (!ok) return
+
+    try {
+      if (backup.txns?.length) await bulkInsertTransactions(backup.txns)
+      if (backup.budgets?.length) for (const b of backup.budgets) await upsertBudget(b.category, b.monthly_limit, b.budget_type)
+      if (backup.recurring?.length) await bulkInsertRecurring(backup.recurring)
+      if (backup.networth?.length) await bulkRestoreNetWorth(backup.networth)
+      toast('Backup restored')
+      await opts.onDataRestored()
+    } catch (e) {
+      toast(e.message || 'Restore failed — some records may have been partially imported')
+    }
   }
 
   function updateTotal() {
