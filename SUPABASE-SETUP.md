@@ -219,6 +219,43 @@ alter table coin_transactions add column if not exists receipt_path text;
 
 Private bucket (these are financial documents) — every object lives under `<user_id>/...`, and the policy scopes access to that folder matching `auth.uid()`, same ownership model as every table's RLS policy above but for Storage objects instead of rows. The app fetches images via a short-lived signed URL, never a public one.
 
+## Adding budget threshold push alerts (2026-09-27)
+
+Run this once — two new tables:
+
+```sql
+create table coin_push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  endpoint text not null unique,
+  p256dh text not null,
+  auth text not null,
+  created_at timestamptz not null default now()
+);
+alter table coin_push_subscriptions enable row level security;
+create policy "own rows" on coin_push_subscriptions for all
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- Written only by api/check-budget-alerts.js via the service-role key, not
+-- from the client — no RLS policy needed the way the tables above have one.
+create table coin_budget_alerts_sent (
+  user_id uuid not null,
+  category text not null,
+  month text not null, -- 'YYYY-MM'
+  sent_at timestamptz not null default now(),
+  primary key (user_id, category, month)
+);
+```
+
+A daily Vercel Cron job (`api/check-budget-alerts.js`) checks everyone's current-month spend per category against `coin_budgets.monthly_limit` and sends a push notification the first time a category crosses 90% or 100% that month — `coin_budget_alerts_sent` is just a dedupe log so it doesn't repeat.
+
+**This needs real setup before it does anything** (same relationship the AI Q&A feature has with `OPENAI_API_KEY` — the code ships regardless, it just won't send anything until these are done):
+
+1. Generate a VAPID key pair: `npx web-push generate-vapid-keys`
+2. In Vercel (Project Settings → Environment Variables), set: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (e.g. `mailto:you@example.com`), `SUPABASE_SERVICE_ROLE_KEY` (Supabase dashboard → Project Settings → API → service_role key — never expose this client-side), `CRON_SECRET` (any random string — Vercel sends it back as the cron request's own Bearer token automatically once set)
+3. Put the same `VAPID_PUBLIC_KEY` value into `src/views/settings.js`'s subscribe flow (it's a public key, safe client-side, but still not hardcoded there yet as of this migration — see that file)
+4. Deploy — `vercel.json`'s `crons` entry picks it up automatically
+
 ## One-time data migration
 
 To bring over your existing 1,416 transactions from Ledger's `manual logs/ledger-import-all.json`, see `scripts/migrate.js` in this repo.

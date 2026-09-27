@@ -173,6 +173,16 @@ export async function deleteNetWorth(id) {
   if (error) throw error
 }
 
+/* ── Push subscriptions (budget alerts) ── */
+
+export async function savePushSubscription(sub) {
+  const { endpoint, keys } = sub.toJSON()
+  const { error } = await supa
+    .from('coin_push_subscriptions')
+    .upsert({ endpoint, p256dh: keys.p256dh, auth: keys.auth, user_id: (await supa.auth.getUser()).data.user.id }, { onConflict: 'endpoint' })
+  if (error) throw error
+}
+
 /* ── Savings goals ── */
 
 export async function fetchGoals() {

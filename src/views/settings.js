@@ -1,6 +1,14 @@
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, BUDGET_TYPE_ORDER, CATEGORY_ICONS, FREQUENCIES } from '../categories.js'
-import { upsertBudget, signOut, addRecurring, updateRecurring, deleteRecurring, updateEmail, updateDisplayName, addNetWorth, deleteNetWorth, bulkInsertTransactions, bulkInsertRecurring, bulkRestoreNetWorth, bulkInsertGoals } from '../supabase.js'
-import { toast, downloadFile, txnsToCsv, todayISO, formatMoney, confirmDialog, frequencyLabel, escapeHtml, computeSuggestedLimits, formatDateDMY, dmyDateFieldHtml, wireDmyDateField, sortByDateDesc } from '../helpers.js'
+import { upsertBudget, signOut, addRecurring, updateRecurring, deleteRecurring, updateEmail, updateDisplayName, addNetWorth, deleteNetWorth, bulkInsertTransactions, bulkInsertRecurring, bulkRestoreNetWorth, bulkInsertGoals, savePushSubscription } from '../supabase.js'
+import { toast, downloadFile, txnsToCsv, todayISO, formatMoney, confirmDialog, frequencyLabel, escapeHtml, computeSuggestedLimits, formatDateDMY, dmyDateFieldHtml, wireDmyDateField, sortByDateDesc, urlBase64ToUint8Array } from '../helpers.js'
+
+// From `npx web-push generate-vapid-keys` — the public half is safe to ship
+// client-side by design (same idea as supabase.js's anon key), it just needs
+// to match VAPID_PRIVATE_KEY on the server (api/check-budget-alerts.js) or
+// every subscription made against this placeholder stops working once the
+// real keys are set. Replace after running that command — see
+// SUPABASE-SETUP.md's "Adding budget threshold push alerts" section.
+const VAPID_PUBLIC_KEY = 'REPLACE_WITH_YOUR_VAPID_PUBLIC_KEY'
 import { ACCENTS, getMode, setMode, getAccent, setAccent } from '../theme.js'
 import { isPrivacyMode, setPrivacyMode } from '../privacy.js'
 import { latestAccountValues } from '../analysisData.js'
@@ -93,6 +101,12 @@ export function renderSettings(container, opts) {
         <button class="btn secondary" id="loadSuggested">↺ Load from Last 3 Months</button>
       </div>
       <div style="font-size:12px;color:var(--text2);margin-top:10px">Fills the fields above from your average spend per category over the last 3 months — review before saving.</div>
+    </div>
+
+    <h2>Budget Alerts</h2>
+    <div class="card" style="margin-bottom:16px">
+      <div style="font-size:13px;color:var(--text2);margin-bottom:12px">Get a push notification when a budget category crosses 90% or 100% for the month.</div>
+      <button class="btn secondary" id="enableAlertsBtn">Enable Budget Alerts</button>
     </div>
 
     <h2>Repeat Purchases</h2>
@@ -189,6 +203,24 @@ export function renderSettings(container, opts) {
   })
 
   container.querySelector('#yearReviewBtn').onclick = () => opts.onViewYearReview()
+
+  container.querySelector('#enableAlertsBtn').onclick = async () => {
+    if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+      toast("This browser doesn't support push notifications")
+      return
+    }
+    const permission = await Notification.requestPermission()
+    if (permission !== 'granted') { toast('Notification permission denied'); return }
+    try {
+      const reg = await navigator.serviceWorker.ready
+      let sub = await reg.pushManager.getSubscription()
+      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) })
+      await savePushSubscription(sub)
+      toast('Budget alerts enabled')
+    } catch (e) {
+      toast(e.message || 'Failed to enable alerts')
+    }
+  }
   container.querySelector('#goalsBtn').onclick = () => opts.onViewGoals()
 
   container.querySelector('#exportCsv').onclick = () => {
