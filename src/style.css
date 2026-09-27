@@ -30,6 +30,27 @@
   --chart-heat-2: #6da7ec;
   --chart-heat-3: #256abf;
   --chart-heat-4: #0d366b;
+
+  /* spacing scale — theme-independent, so it lives here (not repeated in the
+     dark blocks below) alongside --radius */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  /* type scale — theme-independent. --text-hero matches WalkLog's hero-number
+     spec (46px/800/tabular-nums) for the mobile net-worth card. */
+  --text-2xs: 10px;
+  --text-xs: 11px;
+  --text-sm: 12.5px;
+  --text-base: 15px;
+  --text-lg: 17px;
+  --text-xl: 22px;
+  --text-2xl: 26px;
+  --text-hero: 46px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -305,15 +326,38 @@ label:first-child { margin-top: 0; }
 .tab svg { width: 22px; height: 22px; }
 
 /* transaction rows */
+.swipe-row {
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid var(--border);
+}
+.swipe-row:last-child { border-bottom: none; }
+.swipe-row-content {
+  position: relative;
+  z-index: 1;
+  background: var(--surface);
+  touch-action: pan-y;
+}
+.swipe-delete-action {
+  position: absolute;
+  top: 0; right: 0; bottom: 0;
+  width: 72px;
+  background: var(--red);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
 .txn-row {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 12px 4px;
-  border-bottom: 1px solid var(--border);
   cursor: pointer;
 }
-.txn-row:last-child { border-bottom: none; }
 .txn-icon {
   width: 38px;
   height: 38px;
@@ -399,6 +443,24 @@ label:first-child { margin-top: 0; }
   transition: opacity .2s;
 }
 .toast.show { opacity: 1; }
+.toast.has-action {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  pointer-events: none;
+}
+.toast.has-action.show { pointer-events: auto; }
+.toast-action {
+  background: none;
+  border: none;
+  color: var(--bg);
+  text-decoration: underline;
+  font-weight: 800;
+  font-size: 13.5px;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
 
 .center-screen {
   flex: 1;

@@ -298,6 +298,16 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
         }
       }
       toast(stayOnAdd ? `${msg} · ready for the next one` : msg)
+      // main.js's render() wipes #app immediately once onSaved runs, which
+      // would cut off a CSS-class pulse mid-flight — awaiting the Web
+      // Animations API's own finished promise guarantees it actually plays
+      // out first instead of relying on incidental network-delay timing.
+      try {
+        await btn.animate(
+          [{ transform: 'scale(1)' }, { transform: 'scale(1.06)', offset: 0.4 }, { transform: 'scale(1)' }],
+          { duration: 320, easing: 'ease-out' }
+        ).finished
+      } catch { /* animation can't reject in practice, but never block the save on it */ }
       onSaved(stayOnAdd)
     } catch (e) {
       toast(e.message || 'Failed to save')

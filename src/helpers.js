@@ -175,17 +175,39 @@ export function dateHeaderLabel(dateStr) {
 }
 
 let toastTimer = null
-export function toast(msg) {
+function getToastEl() {
   let el = document.querySelector('.toast')
   if (!el) {
     el = document.createElement('div')
     el.className = 'toast'
     document.getElementById('app').appendChild(el)
   }
+  return el
+}
+
+export function toast(msg) {
+  const el = getToastEl()
+  el.classList.remove('has-action')
   el.textContent = msg
   el.classList.add('show')
   clearTimeout(toastTimer)
   toastTimer = setTimeout(() => el.classList.remove('show'), 2000)
+}
+
+// Same toast, but with a button (e.g. "Undo") that fires onAction and dismisses
+// immediately. Stays up longer than a plain toast since there's something to read.
+export function toastWithAction(msg, actionLabel, onAction) {
+  const el = getToastEl()
+  el.classList.add('has-action', 'show')
+  el.innerHTML = `<span class="toast-msg"></span><button type="button" class="toast-action">${escapeHtml(actionLabel)}</button>`
+  el.querySelector('.toast-msg').textContent = msg
+  el.querySelector('.toast-action').onclick = () => {
+    clearTimeout(toastTimer)
+    el.classList.remove('show')
+    onAction()
+  }
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => el.classList.remove('show'), 4000)
 }
 
 // Custom in-DOM confirm — some mobile browsers (e.g. Brave on Android, when the
