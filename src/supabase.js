@@ -70,6 +70,18 @@ export async function deleteTransaction(id) {
   if (error) throw error
 }
 
+// Used by Settings' backup restore. Strips id/user_id/created_at so
+// Supabase assigns fresh ones and the column default fills user_id — these
+// always ADD rows, they never replace or dedupe against what's already
+// there (restoring the same backup twice doubles it, by design/documented).
+export async function bulkInsertTransactions(rows) {
+  const clean = rows.map(({ id, user_id, created_at, ...rest }) => rest)
+  if (!clean.length) return []
+  const { data, error } = await supa.from('coin_transactions').insert(clean).select()
+  if (error) throw error
+  return data
+}
+
 /* ── Budgets ── */
 
 export async function fetchBudgets() {
@@ -113,6 +125,15 @@ export async function deleteRecurring(id) {
   if (error) throw error
 }
 
+// See bulkInsertTransactions above — same restore-only, additive-only contract.
+export async function bulkInsertRecurring(rows) {
+  const clean = rows.map(({ id, user_id, created_at, ...rest }) => rest)
+  if (!clean.length) return []
+  const { data, error } = await supa.from('coin_recurring').insert(clean).select()
+  if (error) throw error
+  return data
+}
+
 /* ── Suggested transactions (e.g. from Claude) — never auto-committed;
    Accept posts a real transaction through this session, Decline just
    removes the suggestion. ── */
@@ -131,8 +152,15 @@ export async function deleteSuggestion(id) {
 
 export async function fetchNetWorth() {
   const { data, error } = await supa.from('coin_networth').select('*, items:coin_networth_items(*)').order('date', { ascending: true })
-  if (error) throw error
-  return data
+  if (!error) return data
+  // coin_networth_items may not exist yet on an install that only ran the
+  // first of the two migration steps — PostgREST fails the whole embedded
+  // join in that case (not per-row), which used to discard real,
+  // already-logged net-worth history along with it. Fall back to the
+  // checkin rows alone so cash/invested/date still show.
+  const { data: checkinsOnly, error: fallbackError } = await supa.from('coin_networth').select('*').order('date', { ascending: true })
+  if (fallbackError) throw error // the original error is more informative than the fallback's
+  return checkinsOnly.map(c => ({ ...c, items: null }))
 }
 
 // items: [{name, category: 'cash'|'invested', value}] — cash/invested on the
@@ -157,4 +185,92 @@ export async function addNetWorth({ date, items }) {
 export async function deleteNetWorth(id) {
   const { error } = await supa.from('coin_networth').delete().eq('id', id)
   if (error) throw error
+}
+
+/* ── Push subscriptions (budget alerts) ── */
+
+export async function savePushSubscription(sub) {
+  const { endpoint, keys } = sub.toJSON()
+  const { error } = await supa
+    .from('coin_push_subscriptions')
+    .upsert({ endpoint, p256dh: keys.p256dh, auth: keys.auth, user_id: (await supa.auth.getUser()).data.user.id }, { onConflict: 'endpoint' })
+  if (error) throw error
+}
+
+/* ── Savings goals ── */
+
+export async function fetchGoals() {
+  const { data, error } = await supa.from('coin_goals').select('*').order('created_at', { ascending: true })
+  if (error) throw error
+  return data
+}
+
+export async function addGoal(goal) {
+  const { data, error } = await supa.from('coin_goals').insert(goal).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function updateGoal(id, patch) {
+  const { data, error } = await supa.from('coin_goals').update(patch).eq('id', id).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteGoal(id) {
+  const { error } = await supa.from('coin_goals').delete().eq('id', id)
+  if (error) throw error
+}
+
+// See bulkInsertTransactions above — same restore-only, additive-only contract.
+export async function bulkInsertGoals(rows) {
+  const clean = rows.map(({ id, user_id, created_at, ...rest }) => rest)
+  if (!clean.length) return []
+  const { data, error } = await supa.from('coin_goals').insert(clean).select()
+  if (error) throw error
+  return data
+}
+
+/* ── Receipt photos ── */
+
+// Path convention <user_id>/<txnId>-<timestamp>.<ext> — the storage RLS
+// policy scopes access by the first path segment matching auth.uid(), same
+// ownership model as every table's RLS above, just for Storage objects.
+export async function uploadReceipt(txnId, file) {
+  const { data: { user } } = await supa.auth.getUser()
+  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
+  const path = `${user.id}/${txnId}-${Date.now()}.${ext}`
+  const { error: uploadError } = await supa.storage.from('receipts').upload(path, file, { contentType: file.type })
+  if (uploadError) throw uploadError
+  await updateTransaction(txnId, { receipt_path: path })
+  return path
+}
+
+// Private bucket — no public URLs for financial documents, so every view
+// needs a fresh short-lived signed URL instead.
+export async function getReceiptUrl(path) {
+  const { data, error } = await supa.storage.from('receipts').createSignedUrl(path, 3600)
+  if (error) throw error
+  return data.signedUrl
+}
+
+export async function deleteReceipt(path) {
+  const { error } = await supa.storage.from('receipts').remove([path])
+  if (error) throw error
+}
+
+// Restore-only, additive-only (see bulkInsertTransactions). Reuses
+// addNetWorth's own checkin+items+rollback logic for the common case;
+// falls back to inserting the checkin row directly for a legacy backup
+// entry that has no items (pre-multi-asset export), so its cash/invested
+// totals aren't silently dropped by addNetWorth's items-derive-the-totals logic.
+export async function bulkRestoreNetWorth(checkins) {
+  for (const c of checkins) {
+    if (c.items && c.items.length) {
+      await addNetWorth({ date: c.date, items: c.items.map(({ name, category, value }) => ({ name, category, value })) })
+    } else {
+      const { error } = await supa.from('coin_networth').insert({ date: c.date, cash: c.cash, invested: c.invested })
+      if (error) throw error
+    }
+  }
 }

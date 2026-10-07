@@ -19,6 +19,14 @@ export default defineConfig({
   },
   plugins: [
     VitePWA({
+      // Switched from the default generateSW to injectManifest so src/sw.js
+      // can add its own push/notificationclick handlers (budget alerts) —
+      // generateSW auto-writes the whole service worker and leaves no room
+      // for custom event listeners. injectManifest just precaches the same
+      // way and hands the rest of the file to us.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.js',
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
@@ -35,14 +43,8 @@ export default defineConfig({
           { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
-      workbox: {
+      injectManifest: {
         globPatterns: ['**/*.{js,css,html,png,svg,ico}'],
-        // Without these, a new service worker installs but waits for every
-        // open tab to fully close before taking over — so a refresh alone
-        // kept serving the old cached bundle after a deploy. This makes a
-        // new version activate (and reload) on the very next page load.
-        skipWaiting: true,
-        clientsClaim: true,
       },
     }),
   ],

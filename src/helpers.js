@@ -39,6 +39,19 @@ export function todayISO() {
   return localISO(new Date())
 }
 
+// Sorts a list of {date, created_at?} records by date — used for net worth
+// check-ins, transactions, anything with a plain ISO date field. Same-date
+// entries break ties by created_at (when present) instead of leaving
+// same-day order to array insertion order, so "the latest entry" means the
+// same thing everywhere this is used rather than depending on which of the
+// four-plus copies of this comparator a given call site happened to have.
+export function sortByDateAsc(list) {
+  return [...list].sort((a, b) => a.date.localeCompare(b.date) || (a.created_at || '').localeCompare(b.created_at || ''))
+}
+export function sortByDateDesc(list) {
+  return [...list].sort((a, b) => b.date.localeCompare(a.date) || (b.created_at || '').localeCompare(a.created_at || ''))
+}
+
 // Average monthly spend per expense category over the trailing N months —
 // replaces a one-time hardcoded snapshot with something that stays current
 // on its own as you keep logging.
@@ -162,17 +175,51 @@ export function dateHeaderLabel(dateStr) {
 }
 
 let toastTimer = null
-export function toast(msg) {
+function getToastEl() {
   let el = document.querySelector('.toast')
   if (!el) {
     el = document.createElement('div')
     el.className = 'toast'
     document.getElementById('app').appendChild(el)
   }
+  return el
+}
+
+// Converts a VAPID public key (base64url string) into the Uint8Array
+// pushManager.subscribe()'s applicationServerKey option expects — standard
+// boilerplate for the Web Push API, same conversion WalkLog's client uses.
+export function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const rawData = atob(base64)
+  const outputArray = new Uint8Array(rawData.length)
+  for (let i = 0; i < rawData.length; i++) outputArray[i] = rawData.charCodeAt(i)
+  return outputArray
+}
+
+export function toast(msg) {
+  const el = getToastEl()
+  el.classList.remove('has-action')
   el.textContent = msg
   el.classList.add('show')
   clearTimeout(toastTimer)
   toastTimer = setTimeout(() => el.classList.remove('show'), 2000)
+}
+
+// Same toast, but with a button (e.g. "Undo") that fires onAction and dismisses
+// immediately. Stays up longer than a plain toast since there's something to read.
+export function toastWithAction(msg, actionLabel, onAction) {
+  const el = getToastEl()
+  el.classList.add('has-action', 'show')
+  el.innerHTML = `<span class="toast-msg"></span><button type="button" class="toast-action">${escapeHtml(actionLabel)}</button>`
+  el.querySelector('.toast-msg').textContent = msg
+  el.querySelector('.toast-action').onclick = () => {
+    clearTimeout(toastTimer)
+    el.classList.remove('show')
+    onAction()
+  }
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => el.classList.remove('show'), 4000)
 }
 
 // Custom in-DOM confirm — some mobile browsers (e.g. Brave on Android, when the
@@ -219,8 +266,9 @@ function csvField(v) {
 }
 
 export function txnsToCsv(txns) {
-  const header = ['date', 'type', 'category', 'subcategory', 'amount', 'notes']
-  const rows = txns.map(t => [t.date, t.type, t.category, t.subcategory || '', t.amount, t.notes || ''].map(csvField).join(','))
+  const header = ['date', 'type', 'category', 'subcategory', 'amount', 'notes', 'tags']
+  // semicolon-joined, not comma — commas are the CSV delimiter itself
+  const rows = txns.map(t => [t.date, t.type, t.category, t.subcategory || '', t.amount, t.notes || '', (t.tags || []).join('; ')].map(csvField).join(','))
   return [header.join(','), ...rows].join('\n')
 }
 

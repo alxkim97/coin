@@ -1,8 +1,19 @@
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, categoryBudgetType, CATEGORY_ICONS } from '../categories.js'
-import { addTransaction, updateTransaction, deleteTransaction, addRecurring } from '../supabase.js'
-import { todayISO, toast, confirmDialog, formatMoney, escapeHtml, advanceDate, frequencyLabel, dmyDateFieldHtml, wireDmyDateField } from '../helpers.js'
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, categoryBudgetType, CATEGORY_ICONS, FREQUENCIES } from '../categories.js'
+import { addTransaction, updateTransaction, deleteTransaction, addRecurring, uploadReceipt, getReceiptUrl, deleteReceipt } from '../supabase.js'
+import { todayISO, toast, confirmDialog, formatMoney, escapeHtml, advanceDate, frequencyLabel, dmyDateFieldHtml, wireDmyDateField, sortByDateDesc } from '../helpers.js'
 
-const FREQUENCIES = ['daily', 'weekly', 'monthly', 'quarterly', 'annually']
+// The transaction's own date can be freely backdated (backfilling an old
+// bill, say). Seeding next_due from a single advanceDate() off that date
+// left it in the past whenever the entry was backdated more than one period
+// — processRecurring's catch-up loop then fires on the very next launch and
+// posts one transaction per missed period, none of which the user asked
+// for. Fast-forward instead: first occurrence on or after today.
+function firstDueOnOrAfter(date, frequency) {
+  let due = advanceDate(date, frequency)
+  const today = todayISO()
+  while (due < today) due = advanceDate(due, frequency)
+  return due
+}
 
 // Builds a searchable "known items" list from vendor names you've actually used
 // before (transaction history) plus anything saved as a repeat purchase —
@@ -10,7 +21,7 @@ const FREQUENCIES = ['daily', 'weekly', 'monthly', 'quarterly', 'annually']
 // category/vendor/amount all fill in at once.
 function buildItemIndex(txns, recurring) {
   const map = new Map()
-  const sorted = [...(txns || [])].sort((a, b) => b.date.localeCompare(a.date))
+  const sorted = sortByDateDesc(txns || [])
   for (const t of sorted) {
     if (!t.subcategory) continue
     const key = `${t.type}::${t.subcategory.toLowerCase()}`
@@ -38,6 +49,24 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
   let recurInstallmentsTotal = ''
   let isCreditCard = editingTxn?.is_credit_card || false
   let isShopee = editingTxn?.is_shopee || false
+  let tags = editingTxn?.tags || []
+  // collapsed by default — keeps the common case (no tags) exactly as lean
+  // as it was before this existed, only editing an already-tagged entry
+  // (or tapping "+ Add tags") expands it
+  let showTagInput = tags.length > 0
+  let receiptFile = null // a freshly-picked File, not yet uploaded — upload happens on save, not on pick
+  let receiptPreviewUrl = null // object URL (fresh pick) or signed URL (existing receipt_path), for the <img>
+  let receiptPath = editingTxn?.receipt_path || null
+  let removeReceipt = false // marks an existing receipt for deletion on save, without touching receiptPath until then
+
+  // Kicked off once here (not inside draw(), which reruns on every field
+  // change) — resolves into receiptPreviewUrl and triggers one redraw once
+  // the signed URL is ready. draw() isn't defined yet at this point in the
+  // file, but it's a hoisted function declaration and this only actually
+  // runs later, after the promise settles, well after draw() exists.
+  if (receiptPath) {
+    getReceiptUrl(receiptPath).then(url => { receiptPreviewUrl = url; draw() }).catch(() => {})
+  }
 
   const itemIndex = buildItemIndex(txns, recurring)
 
@@ -94,6 +123,29 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
 
       <label>Notes (optional)</label>
       <textarea id="notesInput" rows="2" placeholder="Anything else...">${notes}</textarea>
+
+      ${showTagInput ? `
+        <label>Tags (optional)</label>
+        ${tags.length ? `
+          <div class="chip-grid" id="tagChips" style="margin-bottom:8px">
+            ${tags.map(t => `<span class="chip active" data-tag="${escapeHtml(t)}">${escapeHtml(t)} ✕</span>`).join('')}
+          </div>
+        ` : ''}
+        <input id="tagInput" type="text" placeholder="Type a tag, press Enter" autocomplete="off" />
+      ` : `
+        <button type="button" class="link-btn" id="showTagInputBtn" style="margin-top:2px">+ Add tags</button>
+      `}
+
+      <label>Receipt (optional)</label>
+      ${(receiptFile || (receiptPath && !removeReceipt)) ? `
+        <div class="receipt-preview">
+          <img id="receiptPreview" src="${receiptPreviewUrl || ''}" alt="Receipt" />
+          <button type="button" class="link-btn" id="removeReceiptBtn">Remove</button>
+        </div>
+      ` : `
+        <input type="file" accept="image/*" capture="environment" id="receiptInput" style="display:none" />
+        <button type="button" class="btn secondary" id="pickReceiptBtn" style="width:auto">📷 Add Receipt Photo</button>
+      `}
 
       ${type === 'expense' ? `
         <label class="checkbox-row" style="margin-top:16px">
@@ -201,6 +253,48 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
 
     wireDmyDateField(container, 'dateInput', v => { date = v })
     container.querySelector('#notesInput').oninput = e => { notes = e.target.value }
+    container.querySelector('#showTagInputBtn')?.addEventListener('click', () => {
+      showTagInput = true
+      draw()
+      container.querySelector('#tagInput')?.focus()
+    })
+    container.querySelectorAll('#tagChips .chip').forEach(chip => {
+      chip.onclick = () => { tags = tags.filter(t => t !== chip.dataset.tag); draw() }
+    })
+    const tagInputEl = container.querySelector('#tagInput')
+    if (tagInputEl) {
+      tagInputEl.onkeydown = e => {
+        if (e.key !== 'Enter' && e.key !== ',') return
+        e.preventDefault()
+        const v = tagInputEl.value.replace(/,$/, '').trim()
+        if (v && !tags.some(t => t.toLowerCase() === v.toLowerCase())) {
+          tags = [...tags, v]
+          draw()
+          container.querySelector('#tagInput')?.focus()
+        } else {
+          tagInputEl.value = ''
+        }
+      }
+    }
+    container.querySelector('#pickReceiptBtn')?.addEventListener('click', () => container.querySelector('#receiptInput').click())
+    container.querySelector('#receiptInput')?.addEventListener('change', e => {
+      const file = e.target.files[0]
+      if (!file) return
+      receiptFile = file
+      receiptPreviewUrl = URL.createObjectURL(file)
+      removeReceipt = false
+      draw()
+    })
+    container.querySelector('#removeReceiptBtn')?.addEventListener('click', () => {
+      if (receiptFile) {
+        URL.revokeObjectURL(receiptPreviewUrl)
+        receiptFile = null
+        receiptPreviewUrl = null
+      } else {
+        removeReceipt = true
+      }
+      draw()
+    })
     container.querySelector('#isCreditCard')?.addEventListener('change', e => { isCreditCard = e.target.checked })
     container.querySelector('#isShopee')?.addEventListener('change', e => { isShopee = e.target.checked })
     container.querySelector('#saveAsRecurring').onchange = e => { saveAsRecurring = e.target.checked; draw() }
@@ -217,6 +311,7 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
       if (!ok) return
       try {
         await deleteTransaction(editingTxn.id)
+        if (editingTxn.receipt_path) deleteReceipt(editingTxn.receipt_path).catch(() => {}) // best-effort — an orphaned file is a much smaller problem than blocking the delete on it
         toast('Deleted')
         onSaved()
       } catch (e) {
@@ -228,6 +323,10 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
   }
 
   async function save(stayOnAdd) {
+    // a tag typed but never confirmed with Enter shouldn't just vanish on save
+    const danglingTag = container.querySelector('#tagInput')?.value.trim()
+    if (danglingTag && !tags.some(t => t.toLowerCase() === danglingTag.toLowerCase())) tags = [...tags, danglingTag]
+
     const amt = parseFloat(amount)
     if (!amt || amt <= 0) { toast('Enter a valid amount'); return }
     if (!category) { toast('Pick a category'); return }
@@ -244,16 +343,36 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
         category,
         subcategory: subcategory || null,
         notes: notes || null,
+        tags,
         budget_type: type === 'expense' ? categoryBudgetType(category) : null,
         is_credit_card: type === 'expense' ? isCreditCard : false,
         is_shopee: type === 'expense' ? isShopee : false,
       }
+      let savedTxn
       if (isEdit) {
-        await updateTransaction(editingTxn.id, payload)
+        savedTxn = await updateTransaction(editingTxn.id, payload)
       } else {
-        await addTransaction(payload)
+        savedTxn = await addTransaction(payload)
       }
       let msg = isEdit ? 'Transaction updated' : 'Added'
+
+      if (removeReceipt && receiptPath) {
+        try {
+          await deleteReceipt(receiptPath)
+          await updateTransaction(savedTxn.id, { receipt_path: null })
+        } catch (e) {
+          msg += ' — but removing the receipt failed'
+        }
+      } else if (receiptFile) {
+        try {
+          await uploadReceipt(savedTxn.id, receiptFile)
+          // replacing an existing receipt — best-effort cleanup of the old
+          // file, after the new one is confirmed uploaded, not before
+          if (receiptPath) deleteReceipt(receiptPath).catch(() => {})
+        } catch (e) {
+          msg += ' — but the receipt photo failed to upload'
+        }
+      }
       if (saveAsRecurring) {
         try {
           const isDated = recurMode === 'auto' || recurMode === 'remind'
@@ -268,7 +387,13 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
             amount: amt,
             mode: recurMode,
             frequency: isDated ? recurFrequency : null,
-            next_due: isDated ? advanceDate(date, recurFrequency) : null,
+            // 'auto' fast-forwards past a backdated date — auto items
+            // self-post via processRecurring's catch-up loop, so a next_due
+            // left in the past means a pile of unwanted duplicate
+            // transactions on next launch. 'remind' items never auto-post
+            // (a human confirms and marks them paid), so a backdated bill
+            // correctly shows as due right away instead of being suppressed.
+            next_due: recurMode === 'auto' ? firstDueOnOrAfter(date, recurFrequency) : (isDated ? advanceDate(date, recurFrequency) : null),
             installments_total: installmentsTotal,
             installments_paid: recurMode === 'remind' ? 1 : 0,
             active: !(recurMode === 'remind' && installmentsTotal != null && installmentsTotal <= 1),
@@ -281,6 +406,16 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
         }
       }
       toast(stayOnAdd ? `${msg} · ready for the next one` : msg)
+      // main.js's render() wipes #app immediately once onSaved runs, which
+      // would cut off a CSS-class pulse mid-flight — awaiting the Web
+      // Animations API's own finished promise guarantees it actually plays
+      // out first instead of relying on incidental network-delay timing.
+      try {
+        await btn.animate(
+          [{ transform: 'scale(1)' }, { transform: 'scale(1.06)', offset: 0.4 }, { transform: 'scale(1)' }],
+          { duration: 320, easing: 'ease-out' }
+        ).finished
+      } catch { /* animation can't reject in practice, but never block the save on it */ }
       onSaved(stayOnAdd)
     } catch (e) {
       toast(e.message || 'Failed to save')

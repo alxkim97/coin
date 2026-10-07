@@ -1,8 +1,11 @@
 import { Chart, registerables } from 'chart.js'
-import { dailySpend, categoryBreakdown, monthlyRollup, heatmapData, generateInsights, computeProjection, computePersonalRecords, netWorthTimeline } from '../analysisData.js'
+import { dailySpend, categoryBreakdown, monthlyRollup, heatmapData, generateInsights, computeProjection, computePersonalRecords, upcomingBills } from '../analysisData.js'
 import { getAchievementDefs } from '../achievements.js'
-import { formatMoney, localISO, toast, formatDateDMY } from '../helpers.js'
-import { isPrivacyMode, setPrivacyMode } from '../privacy.js'
+import { CATEGORY_ICONS } from '../categories.js'
+import { formatMoney, localISO, toast, formatDateDMY, escapeHtml } from '../helpers.js'
+import { isPrivacyMode, setPrivacyMode, privacyToggleHtml } from '../privacy.js'
+import { isDesktopView } from '../platform.js'
+import { renderInvestmentDepth, renderNetWorthSummaryCard } from './analysisInvestments.js'
 
 Chart.register(...registerables)
 
@@ -16,13 +19,17 @@ let prevUnlocked = new Set()
 
 const chartInstances = {}
 
-function cssVar(name) {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+// Every chart render site used to hand-repeat "destroy the old instance,
+// then construct a new one" — skip the destroy once (easy to do, nothing
+// enforces it) and the old Chart.js instance leaks, redrawing on a detached
+// canvas. One helper makes that step mandatory instead of a convention.
+function renderChart(key, canvas, config) {
+  chartInstances[key]?.destroy()
+  chartInstances[key] = new Chart(canvas.getContext('2d'), config)
 }
 
-function privacyToggleHtml(id) {
-  const on = isPrivacyMode()
-  return `<button class="privacy-toggle-btn" id="${id}" title="${on ? 'Show balances' : 'Hide balances'}">${on ? '🙈' : '👁️'}</button>`
+function cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 }
 
 export function renderAnalysis(container, opts) {
@@ -49,11 +56,7 @@ export function renderAnalysis(container, opts) {
     <h2>Activity Heatmap</h2>
     <div class="card"><div id="heatmap"></div></div>
 
-    <div class="top-bar" style="margin-top:6px"><h2 style="margin:0">Net Worth</h2>${privacyToggleHtml('privacyToggleNw')}</div>
-    <div class="privacy-wrap${privacyOn ? ' active' : ''}">
-      <div class="card"><div class="chart-box"><canvas id="networthChart"></canvas></div></div>
-      ${privacyOn ? '<div class="privacy-overlay">🔒 Balances hidden</div>' : ''}
-    </div>
+    <div id="investmentSection"></div>
 
     <div class="top-bar" style="margin-top:6px"><h2 style="margin:0">Projection</h2>${privacyToggleHtml('privacyToggleProj')}</div>
     <div class="privacy-wrap${privacyOn ? ' active' : ''}">
@@ -63,8 +66,11 @@ export function renderAnalysis(container, opts) {
         <div class="chart-box"><canvas id="projChart"></canvas></div>
         <div class="proj-note" id="projNote"></div>
       </div>
-      ${privacyOn ? '<div class="privacy-overlay">🔒 Balances hidden</div>' : ''}
+      <div class="privacy-overlay">🔒 Balances hidden</div>
     </div>
+
+    <h2>Cashflow Forecast (Next 60 Days)</h2>
+    <div class="card"><div id="cashflowForecast"></div></div>
 
     <h2>Personal Records</h2>
     <div class="card"><div class="record-grid" id="personalRecords"></div></div>
@@ -77,20 +83,42 @@ export function renderAnalysis(container, opts) {
     btn.onclick = () => { period = Number(btn.dataset.period); renderAnalysis(container, opts) }
   })
 
-  ;['privacyToggleNw', 'privacyToggleProj'].forEach(id => {
-    const btn = container.querySelector('#' + id)
-    if (btn) btn.onclick = () => { setPrivacyMode(!isPrivacyMode()); renderAnalysis(container, opts) }
-  })
-
   renderTrendChart(container, txns)
   renderCategoryChart(container, txns)
   renderRollupChart(container, txns)
   renderInsights(container, txns)
   renderHeatmap(container, txns)
-  renderNetWorthChart(container, networth || [])
+  // Desktop/mobile fork point (Phase 3) — both branches render the same
+  // chart today; Phase 4 gives desktop real per-holding depth and mobile a
+  // netwrth.app-style summary card instead.
+  const investmentSection = container.querySelector('#investmentSection')
+  if (isDesktopView()) renderInvestmentDepth(investmentSection, networth || [])
+  else renderNetWorthSummaryCard(investmentSection, networth || [])
   renderProjectionSection(container, txns, networth || [])
+  renderCashflowForecast(container, recurring)
   renderPersonalRecords(container, txns)
   renderAchievements(container, txns, budgets, recurring)
+
+  // Hiding balances is a pure CSS toggle (.privacy-wrap.active blurs the
+  // card) — it used to call renderAnalysis() here, which re-ran every
+  // analytics scan and destroyed/rebuilt all charts just to flip a class,
+  // causing a visible stutter right when someone's about to show their
+  // screen. Wired last, after the investment section above has rendered its
+  // own privacy-toggle button into the DOM — both buttons mirror the same
+  // isPrivacyMode() flag and toggle every .privacy-wrap under this
+  // container, not just their own section's.
+  ;['privacyToggleNw', 'privacyToggleProj'].forEach(id => {
+    const btn = container.querySelector('#' + id)
+    if (btn) btn.onclick = () => {
+      setPrivacyMode(!isPrivacyMode())
+      const on = isPrivacyMode()
+      container.querySelectorAll('.privacy-wrap').forEach(w => w.classList.toggle('active', on))
+      container.querySelectorAll('.privacy-toggle-btn').forEach(b => {
+        b.textContent = on ? '🙈' : '👁️'
+        b.title = on ? 'Show balances' : 'Hide balances'
+      })
+    }
+  })
 }
 
 function renderPersonalRecords(container, txns) {
@@ -110,65 +138,27 @@ function renderPersonalRecords(container, txns) {
   `).join('')
 }
 
-function renderNetWorthChart(container, networth) {
-  const canvas = container.querySelector('#networthChart')
-  if (chartInstances.networth) chartInstances.networth.destroy()
-  container.querySelector('#networthEmpty')?.remove()
-
-  const timeline = netWorthTimeline(networth)
-  if (!timeline.length) {
-    canvas.style.display = 'none'
-    canvas.insertAdjacentHTML('afterend', '<div class="empty-state" id="networthEmpty">No check-ins yet — add one in Settings → Net Worth.</div>')
+function renderCashflowForecast(container, recurring) {
+  const bills = upcomingBills(recurring, 60)
+  const el = container.querySelector('#cashflowForecast')
+  if (!bills.length) {
+    el.innerHTML = '<div class="empty-state">No upcoming bills in the next 60 days.</div>'
     return
   }
-  canvas.style.display = ''
-
-  const labels = timeline.map(n => new Date(n.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: '2-digit' }))
-  const text3 = cssVar('--text3')
-  const grid = cssVar('--chart-grid')
-  const c1 = cssVar('--chart-1')
-  const c3 = cssVar('--chart-3')
-  const c5 = cssVar('--chart-5')
-  const accent = cssVar('--accent')
-  const hasInsurance = timeline.some(n => n.insurance > 0)
-
-  chartInstances.networth = new Chart(canvas.getContext('2d'), {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [
-        {
-          label: 'Total', data: timeline.map(n => n.total),
-          borderColor: accent, backgroundColor: accent + '22', borderWidth: 3,
-          fill: true, tension: 0.3, pointRadius: 3,
-        },
-        {
-          label: 'Cash', data: timeline.map(n => n.cash),
-          borderColor: c1, borderWidth: 1.5, borderDash: [4, 3], fill: false, tension: 0.3, pointRadius: 2,
-        },
-        {
-          label: 'Invested', data: timeline.map(n => n.invested),
-          borderColor: c3, borderWidth: 1.5, borderDash: [4, 3], fill: false, tension: 0.3, pointRadius: 2,
-        },
-        ...(hasInsurance ? [{
-          label: 'Insurance', data: timeline.map(n => n.insurance),
-          borderColor: c5, borderWidth: 1.5, borderDash: [4, 3], fill: false, tension: 0.3, pointRadius: 2,
-        }] : []),
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { position: 'top', align: 'end', labels: { color: text3, font: { size: 11 }, boxWidth: 10, usePointStyle: true } },
-        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${formatMoney(ctx.parsed.y)}` } },
-      },
-      scales: {
-        x: { ticks: { color: text3, font: { size: 10 } }, grid: { display: false } },
-        y: { ticks: { color: text3, font: { size: 10 }, callback: v => formatMoney(v) }, grid: { color: grid } },
-      },
-    },
-  })
+  const total = bills[bills.length - 1].runningTotal
+  el.innerHTML = `
+    <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Bills only, not a full balance projection — ${formatMoney(total)} total due over the next 60 days.</div>
+    ${bills.map(b => `
+      <div class="bill-row">
+        <div class="bill-icon">${CATEGORY_ICONS[b.category] || '💵'}</div>
+        <div class="bill-main">
+          <div class="bill-name">${escapeHtml(b.name)}</div>
+          <div class="bill-meta">${formatDateDMY(b.date)}</div>
+        </div>
+        <div class="bill-amt">${formatMoney(b.amount)}</div>
+      </div>
+    `).join('')}
+  `
 }
 
 function renderProjectionSection(container, txns, networth) {
@@ -184,12 +174,11 @@ function renderProjectionSection(container, txns, networth) {
     ? ''
     : 'No net worth check-in yet — projection starts from ฿0. Add a check-in in Settings → Net Worth for a real starting point.'
 
-  if (chartInstances.projection) chartInstances.projection.destroy()
   const text3 = cssVar('--text3')
   const grid = cssVar('--chart-grid')
   const accent = cssVar('--accent')
 
-  chartInstances.projection = new Chart(container.querySelector('#projChart').getContext('2d'), {
+  renderChart('projection', container.querySelector('#projChart'), {
     type: 'line',
     data: {
       labels: proj.points.map(p => p.label),
@@ -244,8 +233,7 @@ function renderAchievements(container, txns, budgets, recurring) {
 function renderTrendChart(container, txns) {
   const points = dailySpend(txns, period)
   const avg = points.reduce((s, p) => s + p.amount, 0) / (points.length || 1)
-  const ctx = container.querySelector('#trendChart').getContext('2d')
-  if (chartInstances.trend) chartInstances.trend.destroy()
+  const canvas = container.querySelector('#trendChart')
 
   const accent = cssVar('--accent')
   const text3 = cssVar('--text3')
@@ -257,7 +245,7 @@ function renderTrendChart(container, txns) {
       : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   })
 
-  chartInstances.trend = new Chart(ctx, {
+  renderChart('trend', canvas, {
     type: 'line',
     data: {
       labels,
@@ -295,7 +283,6 @@ const DONUT_PALETTE = ['--chart-1', '--chart-2', '--chart-3', '--chart-4', '--ch
 function renderCategoryChart(container, txns) {
   const data = categoryBreakdown(txns, period)
   const canvas = container.querySelector('#categoryChart')
-  if (chartInstances.category) chartInstances.category.destroy()
   container.querySelector('#categoryEmpty')?.remove()
 
   if (!data.length) {
@@ -310,7 +297,7 @@ function renderCategoryChart(container, txns) {
   const surface = cssVar('--surface')
   const total = data.reduce((s, d) => s + d.amount, 0)
 
-  chartInstances.category = new Chart(canvas.getContext('2d'), {
+  renderChart('category', canvas, {
     type: 'doughnut',
     data: {
       labels: data.map(d => d.category),
@@ -333,14 +320,13 @@ function renderCategoryChart(container, txns) {
 
 function renderRollupChart(container, txns) {
   const rows = monthlyRollup(txns, 12)
-  if (chartInstances.rollup) chartInstances.rollup.destroy()
 
   const text3 = cssVar('--text3')
   const grid = cssVar('--chart-grid')
   const green = cssVar('--green')
   const red = cssVar('--red')
 
-  chartInstances.rollup = new Chart(container.querySelector('#rollupChart').getContext('2d'), {
+  renderChart('rollup', container.querySelector('#rollupChart'), {
     type: 'bar',
     data: {
       labels: rows.map(r => r.label),

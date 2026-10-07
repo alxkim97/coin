@@ -1,10 +1,122 @@
-import { formatMoney, monthLabel, monthRange, dateHeaderLabel, formatDateDMY, localISO, escapeHtml } from '../helpers.js'
+import { formatMoney, monthLabel, monthRange, dateHeaderLabel, formatDateDMY, localISO, escapeHtml, toast, toastWithAction } from '../helpers.js'
 import { CATEGORY_ICONS } from '../categories.js'
+import { deleteTransaction, addTransaction } from '../supabase.js'
 
 // persists across re-renders within the session (module-level, like the rest of the app's view state)
 let filters = { q: '', category: 'All', min: '', max: '' }
 let viewMode = 'list'
 let calSelectedDate = null
+
+// closes whichever swipe-to-delete row is currently open when a new one opens
+// or the list re-renders — only one row should ever be pulled open at a time
+let closeOpenSwipe = null
+
+function txnRowHtml(t) {
+  return `
+    <div class="swipe-row" data-id="${t.id}">
+      <div class="swipe-delete-action">Delete</div>
+      <div class="swipe-row-content">
+        <div class="txn-row" data-id="${t.id}">
+          <div class="txn-icon">${CATEGORY_ICONS[t.category] || '💵'}</div>
+          <div class="txn-main">
+            <div class="txn-cat">${escapeHtml(t.category)}${t.is_credit_card ? ' <span class="txn-cc" title="Paid via credit card">💳</span>' : ''}${t.is_shopee ? ' <span class="txn-cc" title="Bought via Shopee">🛍️</span>' : ''}${t.receipt_path ? ' <span class="txn-cc" title="Has a receipt photo">📎</span>' : ''}</div>
+            ${t.subcategory ? `<div class="txn-sub">${escapeHtml(t.subcategory)}</div>` : ''}
+            ${t.tags?.length ? `<div class="txn-tags">${t.tags.map(tag => `<span class="txn-tag">${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
+          </div>
+          <div class="txn-amt ${t.type}">${t.type === 'income' ? '+' : '−'}${formatMoney(t.amount)}</div>
+        </div>
+      </div>
+    </div>
+  `
+}
+
+// Wires pointer-drag swipe-to-delete on every `.swipe-row` under `root`.
+// onEdit/onDelete take the row's txn id — callers look it up in whichever
+// array is in scope (filtered list vs. calendar day detail).
+function wireTxnRows(root, { onEdit, onDelete }) {
+  closeOpenSwipe = null
+  root.querySelectorAll('.swipe-row').forEach(swipeRow => {
+    const id = swipeRow.dataset.id
+    const content = swipeRow.querySelector('.swipe-row-content')
+    let startX = 0, startY = 0, baseX = 0, curX = 0, dragging = false, moved = false
+
+    function setX(x, animate) {
+      curX = x
+      content.style.transition = animate ? 'transform .18s ease' : 'none'
+      content.style.transform = x ? `translateX(${x}px)` : ''
+    }
+    function close() { setX(0, true) }
+    function openFull() {
+      if (closeOpenSwipe && closeOpenSwipe !== close) closeOpenSwipe()
+      setX(-72, true)
+      closeOpenSwipe = close
+    }
+
+    content.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return
+      startX = e.clientX; startY = e.clientY; baseX = curX; dragging = true; moved = false
+    })
+    content.addEventListener('pointermove', e => {
+      if (!dragging) return
+      const dx = e.clientX - startX, dy = e.clientY - startY
+      if (!moved) {
+        if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 8) { dragging = false; return }
+        if (Math.abs(dx) < 8) return
+        moved = true
+      }
+      setX(Math.min(0, Math.max(-72, baseX + dx)), false)
+    })
+    function endDrag() {
+      if (!dragging) return
+      dragging = false
+      if (!moved) return
+      if (curX < -36) openFull(); else close()
+    }
+    content.addEventListener('pointerup', endDrag)
+    content.addEventListener('pointercancel', endDrag)
+
+    content.querySelector('.txn-row').onclick = () => {
+      if (moved) return
+      if (curX !== 0) { close(); return }
+      onEdit(id)
+    }
+    swipeRow.querySelector('.swipe-delete-action').onclick = () => { close(); onDelete(id) }
+  })
+}
+
+// Mutates `txns` in place (the same array reference main.js holds in
+// state.txns) and calls `rerender` — which just re-invokes renderTransactions
+// on the view's own container, not the top-level app render, so the
+// in-flight undo toast (appended to #app, a sibling of this container)
+// survives. Restores on failure. Undo re-adds via addTransaction — it gets a
+// new DB id, same visible data, an accepted limitation rather than a bug.
+async function deleteTxnRow(id, txns, rerender) {
+  const idx = txns.findIndex(t => t.id === id)
+  const txn = txns[idx]
+  if (!txn) return
+  txns.splice(idx, 1)
+  rerender()
+
+  try {
+    await deleteTransaction(id)
+  } catch (e) {
+    txns.splice(idx, 0, txn)
+    rerender()
+    toast(e.message || 'Failed to delete')
+    return
+  }
+
+  toastWithAction('Transaction deleted', 'Undo', async () => {
+    try {
+      const { id: _oldId, created_at, ...rest } = txn
+      const restored = await addTransaction(rest)
+      txns.push(restored)
+      rerender()
+    } catch (e) {
+      toast(e.message || 'Failed to restore')
+    }
+  })
+}
 
 export function renderTransactions(container, { txns, budgets, year, month, onMonthChange, onEditTxn }) {
   const { from, to } = monthRange(year, month)
@@ -67,7 +179,7 @@ export function renderTransactions(container, { txns, budgets, year, month, onMo
   })
 
   if (viewMode === 'calendar') {
-    renderCalendar(container, monthTxns, budgets || [], year, month, onEditTxn)
+    renderCalendar(container, txns, monthTxns, budgets || [], year, month, onMonthChange, onEditTxn)
     return
   }
 
@@ -80,7 +192,7 @@ export function renderTransactions(container, { txns, budgets, year, month, onMo
       if (min !== null && Number(t.amount) < min) return false
       if (max !== null && Number(t.amount) > max) return false
       if (q) {
-        const hay = `${t.category} ${t.subcategory || ''} ${t.notes || ''}`.toLowerCase()
+        const hay = `${t.category} ${t.subcategory || ''} ${t.notes || ''} ${(t.tags || []).join(' ')}`.toLowerCase()
         if (!hay.includes(q)) return false
       }
       return true
@@ -101,24 +213,14 @@ export function renderTransactions(container, { txns, budgets, year, month, onMo
       : dates.map(date => `
         <div class="txn-date-header">${dateHeaderLabel(date)}</div>
         <div class="card">
-          ${groups[date].map(t => `
-            <div class="txn-row" data-id="${t.id}">
-              <div class="txn-icon">${CATEGORY_ICONS[t.category] || '💵'}</div>
-              <div class="txn-main">
-                <div class="txn-cat">${escapeHtml(t.category)}${t.is_credit_card ? ' <span class="txn-cc" title="Paid via credit card">💳</span>' : ''}${t.is_shopee ? ' <span class="txn-cc" title="Bought via Shopee">🛍️</span>' : ''}</div>
-                ${t.subcategory ? `<div class="txn-sub">${escapeHtml(t.subcategory)}</div>` : ''}
-              </div>
-              <div class="txn-amt ${t.type}">${t.type === 'income' ? '+' : '−'}${formatMoney(t.amount)}</div>
-            </div>
-          `).join('')}
+          ${groups[date].map(txnRowHtml).join('')}
         </div>
       `).join('')
 
-    list.querySelectorAll('.txn-row').forEach(row => {
-      row.onclick = () => {
-        const txn = filtered.find(t => t.id === row.dataset.id)
-        onEditTxn(txn)
-      }
+    const rerender = () => renderTransactions(container, { txns, budgets, year, month, onMonthChange, onEditTxn })
+    wireTxnRows(list, {
+      onEdit: id => onEditTxn(filtered.find(t => t.id === id)),
+      onDelete: id => deleteTxnRow(id, txns, rerender),
     })
   }
 
@@ -138,7 +240,7 @@ export function renderTransactions(container, { txns, budgets, year, month, onMo
   updateList()
 }
 
-function renderCalendar(container, monthTxns, budgets, year, month, onEditTxn) {
+function renderCalendar(container, txns, monthTxns, budgets, year, month, onMonthChange, onEditTxn) {
   const spendByDate = {}
   for (const t of monthTxns) {
     if (t.type !== 'expense') continue
@@ -180,7 +282,7 @@ function renderCalendar(container, monthTxns, budgets, year, month, onEditTxn) {
   grid.querySelectorAll('.cal-day[data-date]').forEach(cell => {
     cell.onclick = () => {
       calSelectedDate = calSelectedDate === cell.dataset.date ? null : cell.dataset.date
-      renderCalendar(container, monthTxns, budgets, year, month, onEditTxn)
+      renderCalendar(container, txns, monthTxns, budgets, year, month, onMonthChange, onEditTxn)
     }
   })
 
@@ -193,22 +295,12 @@ function renderCalendar(container, monthTxns, budgets, year, month, onEditTxn) {
   detail.innerHTML = `
     <div class="txn-date-header">${formatDateDMY(calSelectedDate)}</div>
     <div class="card">
-      ${dayTxns.length === 0 ? '<div class="empty-state">No transactions this day.</div>' : dayTxns.map(t => `
-        <div class="txn-row" data-id="${t.id}">
-          <div class="txn-icon">${CATEGORY_ICONS[t.category] || '💵'}</div>
-          <div class="txn-main">
-            <div class="txn-cat">${escapeHtml(t.category)}${t.is_credit_card ? ' <span class="txn-cc" title="Paid via credit card">💳</span>' : ''}${t.is_shopee ? ' <span class="txn-cc" title="Bought via Shopee">🛍️</span>' : ''}</div>
-            ${t.subcategory ? `<div class="txn-sub">${escapeHtml(t.subcategory)}</div>` : ''}
-          </div>
-          <div class="txn-amt ${t.type}">${t.type === 'income' ? '+' : '−'}${formatMoney(t.amount)}</div>
-        </div>
-      `).join('')}
+      ${dayTxns.length === 0 ? '<div class="empty-state">No transactions this day.</div>' : dayTxns.map(txnRowHtml).join('')}
     </div>
   `
-  detail.querySelectorAll('.txn-row').forEach(row => {
-    row.onclick = () => {
-      const txn = dayTxns.find(t => t.id === row.dataset.id)
-      onEditTxn(txn)
-    }
+  const rerender = () => renderTransactions(container, { txns, budgets, year, month, onMonthChange, onEditTxn })
+  wireTxnRows(detail, {
+    onEdit: id => onEditTxn(dayTxns.find(t => t.id === id)),
+    onDelete: id => deleteTxnRow(id, txns, rerender),
   })
 }

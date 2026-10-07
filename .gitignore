@@ -19,6 +19,12 @@ exports
 # Saved Supabase session — carries full account access, never commit this
 .coin-session.json
 
+# Third-party Claude Code skill, mirrored locally from
+# github.com/dickwu/apple-design-skill (no license file — kept local-only,
+# not redistributed via this repo). Re-run the download step on another
+# machine if you want it there too.
+.claude/skills/apple-design
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

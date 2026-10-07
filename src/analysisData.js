@@ -1,4 +1,4 @@
-import { localISO, formatMoney, formatDateDMY } from './helpers.js'
+import { localISO, formatMoney, formatDateDMY, sortByDateAsc, todayISO, advanceDate } from './helpers.js'
 
 function daysAgo(n) {
   const d = new Date()
@@ -35,6 +35,28 @@ export function categoryBreakdown(txns, days, maxSlices = 7) {
   const otherTotal = sorted.slice(maxSlices).reduce((s, [, v]) => s + v, 0)
   if (otherTotal > 0) top.push({ category: 'Other', amount: otherTotal })
   return top
+}
+
+// Per-category, per-month expense totals over the trailing N months — the
+// granularity monthlyRollup doesn't have (it only tracks income/expense
+// totals). Built for the AI Q&A context digest, where "how much did I spend
+// on X in March" needs more than a single rolled-up number.
+export function categoryMonthlyBreakdown(txns, months = 12) {
+  const now = new Date()
+  const keys = []
+  for (let i = months - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    keys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+  }
+  const keySet = new Set(keys)
+  const byMonth = Object.fromEntries(keys.map(k => [k, {}]))
+  for (const t of txns) {
+    if (t.type !== 'expense') continue
+    const key = t.date.slice(0, 7)
+    if (!keySet.has(key)) continue
+    byMonth[key][t.category] = (byMonth[key][t.category] || 0) + Number(t.amount)
+  }
+  return keys.map(key => ({ month: key, categories: byMonth[key] }))
 }
 
 export function monthlyRollup(txns, months = 12) {
@@ -75,7 +97,7 @@ export function heatmapData(txns, days = 371) {
 // This walks every check-in in date order and keeps the latest known value
 // per account name, so partial updates accumulate instead of overwriting.
 export function latestAccountValues(networth) {
-  const sorted = [...(networth || [])].sort((a, b) => a.date.localeCompare(b.date) || (a.created_at || '').localeCompare(b.created_at || ''))
+  const sorted = sortByDateAsc(networth || [])
   const byName = new Map()
   for (const checkin of sorted) {
     for (const item of (checkin.items || [])) {
@@ -86,13 +108,73 @@ export function latestAccountValues(networth) {
   return [...byName.values()]
 }
 
+// Forward list of upcoming recurring occurrences over the next `days` —
+// 'auto' and 'remind' modes only ('quick' items have no schedule at all, so
+// there's nothing to forecast). Deliberately bills-only, not a full balance
+// projection: computeProjection already exists for that and combines
+// assumed income timing, which isn't tracked precisely enough here to
+// justify claiming a real running balance. An overdue item's stale
+// next_due is still walked forward via advanceDate to find its next real
+// occurrence in-window — same catch-up logic processRecurring uses when it
+// actually posts — but the overdue occurrence itself is left out here since
+// billsDue() (recurringReminders.js) already surfaces that separately.
+export function upcomingBills(recurring, days = 60) {
+  const today = todayISO()
+  const end = new Date()
+  end.setDate(end.getDate() + days)
+  const endStr = localISO(end)
+
+  const occurrences = []
+  for (const r of (recurring || [])) {
+    if (!r.active || !r.next_due || !r.frequency) continue
+    if (r.mode !== 'auto' && r.mode !== 'remind') continue
+    let due = r.next_due
+    while (due <= endStr) {
+      if (due >= today) occurrences.push({ id: r.id, name: r.subcategory || r.category, category: r.category, amount: Number(r.amount), date: due })
+      due = advanceDate(due, r.frequency)
+    }
+  }
+  occurrences.sort((a, b) => a.date.localeCompare(b.date))
+
+  let runningTotal = 0
+  for (const occ of occurrences) { runningTotal += occ.amount; occ.runningTotal = runningTotal }
+  return occurrences
+}
+
+// Current progress toward a savings goal — either its own manually-updated
+// current_amount, or (if linked_account is set) the latest known value of
+// that net-worth account via latestAccountValues above. suggestedMonthly
+// assumes even pacing to target_date; null with no target_date, an already-
+// past target_date, or nothing left to save.
+export function goalProgress(goal, networth) {
+  let current = Number(goal.current_amount) || 0
+  if (goal.linked_account) {
+    const match = latestAccountValues(networth).find(a => a.name.toLowerCase() === goal.linked_account.toLowerCase())
+    if (match) current = match.value
+  }
+  const target = Number(goal.target_amount) || 0
+  const pct = target > 0 ? Math.min(100, (current / target) * 100) : 0
+  const remaining = Math.max(0, target - current)
+
+  let suggestedMonthly = null
+  if (goal.target_date && remaining > 0) {
+    const msRemaining = new Date(goal.target_date + 'T00:00:00') - new Date()
+    if (msRemaining > 0) {
+      const monthsRemaining = Math.max(1, msRemaining / (1000 * 60 * 60 * 24 * 30.44))
+      suggestedMonthly = remaining / monthsRemaining
+    }
+  }
+
+  return { current, target, pct, remaining, suggestedMonthly }
+}
+
 // One point per check-in *event*, but each point's total reflects the full
 // latest-per-account picture as of that moment (via latestAccountValues),
 // not just that one check-in's own items — so logging banks and investments
 // as two separate check-ins the same day still produces a combined total on
 // the second point instead of a misleading dip back to just one half.
 export function netWorthTimeline(networth) {
-  const sorted = [...(networth || [])].sort((a, b) => a.date.localeCompare(b.date) || (a.created_at || '').localeCompare(b.created_at || ''))
+  const sorted = sortByDateAsc(networth || [])
   const byName = new Map()
   const points = []
   for (const checkin of sorted) {
@@ -114,6 +196,52 @@ export function netWorthTimeline(networth) {
     points.push({ date: checkin.date, cash, invested, insurance, total: cash + invested + insurance })
   }
   return points
+}
+
+// Percent change in total net worth between the first and last check-in
+// points — a trend badge only needs the two endpoints, not the full series,
+// so this stays a thin wrapper over netWorthTimeline rather than its own scan.
+export function netWorthChangePct(networth) {
+  const points = netWorthTimeline(networth)
+  if (points.length < 2) return null
+  const first = points[0].total
+  const last = points[points.length - 1].total
+  if (first === 0) return null
+  return ((last - first) / Math.abs(first)) * 100
+}
+
+// Per-account analogue of netWorthTimeline: one entry per account (same
+// lowercase-name identity model as latestAccountValues — renaming an
+// account looks like a new one with no history, a pre-existing limitation,
+// not a regression here), each with its own {date, value} series across
+// every check-in that mentioned it, instead of collapsing into the three
+// category totals.
+export function accountHistory(networth) {
+  const sorted = sortByDateAsc(networth || [])
+  const byName = new Map()
+  for (const checkin of sorted) {
+    for (const item of (checkin.items || [])) {
+      const key = item.name.trim().toLowerCase()
+      if (!byName.has(key)) byName.set(key, { name: item.name, category: item.category, points: [] })
+      const entry = byName.get(key)
+      entry.category = item.category // keep the most recent category label, in case it was ever recategorized
+      entry.points.push({ date: checkin.date, value: Number(item.value) })
+    }
+  }
+  return [...byName.values()]
+}
+
+// Pure derived math off accountHistory — no new data needed. changePct is
+// null (not 0 or NaN) when the account started at ฿0, since "% change from
+// zero" isn't a meaningful number to show.
+export function accountReturns(networth) {
+  return accountHistory(networth).map(({ name, category, points }) => {
+    const first = points[0]
+    const last = points[points.length - 1]
+    const changeAbs = last.value - first.value
+    const changePct = first.value !== 0 ? (changeAbs / Math.abs(first.value)) * 100 : null
+    return { name, category, firstDate: first.date, firstValue: first.value, lastDate: last.date, lastValue: last.value, changeAbs, changePct, points }
+  })
 }
 
 // Forward-looking net worth projection from trailing complete-month averages
@@ -164,7 +292,11 @@ export function computeProjection(txns, networth, months = 12) {
 // All-time highlight stats — separate from generateInsights (which is a
 // rolling 30-day behavior read); these are "personal bests" that only move
 // when a new record is actually set, so they don't churn month to month.
-export function computePersonalRecords(txns) {
+// `asOf` bounds the no-spend-streak walk (defaults to today, the original
+// all-time behavior) — computeYearReview passes a year's Dec 31 (or today,
+// if the year isn't over yet) so a review of an old year doesn't silently
+// walk the streak all the way through the present.
+export function computePersonalRecords(txns, asOf = new Date()) {
   if (!txns.length) return []
 
   const incomeByDate = {}, expenseByDate = {}
@@ -188,10 +320,10 @@ export function computePersonalRecords(txns) {
   // full history so far (first-ever transaction through today).
   const allDates = [...new Set(txns.map(t => t.date))].sort()
   const expenseDates = new Set(txns.filter(t => t.type === 'expense').map(t => t.date))
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
+  const walkEnd = new Date(asOf)
+  walkEnd.setHours(0, 0, 0, 0)
   let longest = 0, current = 0, longestEnd = null
-  for (let d = new Date(allDates[0] + 'T00:00:00'); d <= today; d.setDate(d.getDate() + 1)) {
+  for (let d = new Date(allDates[0] + 'T00:00:00'); d <= walkEnd; d.setDate(d.getDate() + 1)) {
     const ds = localISO(d)
     if (expenseDates.has(ds)) {
       current = 0
@@ -224,6 +356,59 @@ export function computePersonalRecords(txns) {
     records.push({ icon: '📈', label: 'Best Savings Month', value: formatMoney(bestMonth.net), dateLabel: new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) })
   }
   return records
+}
+
+// A year's recap — total income/expense/savings, top categories, a
+// prior-year comparison when there's data for it, and computePersonalRecords
+// re-scoped to the year by simply pre-filtering txns first (it has no
+// internal date logic that assumes "now", so this needed no changes there).
+export function computeYearReview(txns, year) {
+  const yearStr = String(year)
+  const yearTxns = txns.filter(t => t.date.slice(0, 4) === yearStr)
+  const prevYearTxns = txns.filter(t => t.date.slice(0, 4) === String(year - 1))
+
+  let totalIncome = 0, totalExpense = 0
+  const categorySums = {}
+  for (const t of yearTxns) {
+    if (t.type === 'income') totalIncome += Number(t.amount)
+    else {
+      totalExpense += Number(t.amount)
+      categorySums[t.category] = (categorySums[t.category] || 0) + Number(t.amount)
+    }
+  }
+  const topCategories = Object.entries(categorySums)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([category, amount]) => ({ category, amount }))
+
+  let prevIncome = 0, prevExpense = 0
+  for (const t of prevYearTxns) {
+    if (t.type === 'income') prevIncome += Number(t.amount)
+    else prevExpense += Number(t.amount)
+  }
+  const hasPrevYear = prevYearTxns.length > 0
+  const incomeChangePct = hasPrevYear && prevIncome > 0 ? ((totalIncome - prevIncome) / prevIncome) * 100 : null
+  const expenseChangePct = hasPrevYear && prevExpense > 0 ? ((totalExpense - prevExpense) / prevExpense) * 100 : null
+
+  const netSaved = totalIncome - totalExpense
+  const savingsRate = totalIncome > 0 ? (netSaved / totalIncome) * 100 : null
+  const activeMonths = new Set(yearTxns.map(t => t.date.slice(0, 7))).size
+
+  // Bounds the no-spend-streak walk inside computePersonalRecords to this
+  // year — Dec 31 for a past year, today if the year isn't over yet — so
+  // reviewing e.g. 2024 doesn't walk that streak all the way through today.
+  const yearEnd = new Date(year, 11, 31)
+  const now = new Date()
+  const recordsAsOf = yearEnd < now ? yearEnd : now
+
+  return {
+    year,
+    hasData: yearTxns.length > 0,
+    totalIncome, totalExpense, netSaved, savingsRate, activeMonths,
+    topCategories,
+    incomeChangePct, expenseChangePct,
+    personalRecords: computePersonalRecords(yearTxns, recordsAsOf),
+  }
 }
 
 export function generateInsights(txns) {

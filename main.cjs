@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Tray, Menu } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, globalShortcut } = require('electron')
 const path = require('path')
 const { autoUpdater } = require('electron-updater')
 
@@ -76,6 +76,18 @@ function createTray() {
   tray.on('click', () => { mainWindow.show(); mainWindow.focus() })
 }
 
+// Same show/focus idiom as the tray click and second-instance handlers above,
+// plus a 'navigate' push to the already-loaded renderer — the only
+// main-to-renderer IPC channel in the app so far (everything else is
+// renderer-initiated ipcMain.handle calls).
+function focusAndNavigate(view) {
+  if (!mainWindow) return
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.show()
+  mainWindow.focus()
+  mainWindow.webContents.send('navigate', view)
+}
+
 // Auto-update via electron-updater + GitHub Releases. A manual check (from
 // the renderer's Settings page) always reports back — found, not found, or
 // error; the periodic background check stays silent unless it actually
@@ -103,28 +115,30 @@ autoUpdater.on('error', (err) => {
   console.error('autoUpdater error:', err)
 })
 
+// checkInProgress guards BOTH manual and periodic checks against the same
+// shared autoUpdater event emitter, so a background tick firing mid-click
+// can't steal the listeners registered for the user's own manual check (and
+// vice versa). It's reset via .finally() on the check promise itself, not
+// only from the event handlers below — a rejection that doesn't also emit
+// 'error' used to leave it stuck true forever, silently disabling every
+// future "Check for Updates" click until restart.
 let checkInProgress = false
 function checkForUpdates(manual) {
   if (isDev) return updateDownloaded ? 'downloaded' : 'skipped-dev'
-  if (!manual) {
-    autoUpdater.checkForUpdates().catch(() => {})
-    return
-  }
   if (updateDownloaded) {
-    dialog.showMessageBox({ type: 'info', title: 'Coin', message: 'Update already downloaded — restart Coin to install it.' })
+    if (manual) dialog.showMessageBox({ type: 'info', title: 'Coin', message: 'Update already downloaded — restart Coin to install it.' })
     return
   }
-  if (checkInProgress) return // a click already in flight — let it finish rather than stacking duplicate dialogs
+  if (checkInProgress) return // a check is already in flight — let it finish rather than racing a second one
   checkInProgress = true
   const cleanup = () => {
-    checkInProgress = false
     autoUpdater.off('update-not-available', onNotAvailable)
     autoUpdater.off('update-available', onAvailable)
     autoUpdater.off('error', onError)
   }
   const onAvailable = (info) => {
     cleanup()
-    dialog.showMessageBox({
+    if (manual) dialog.showMessageBox({
       type: 'info',
       title: 'Coin',
       message: `Update found: Coin ${info.version}`,
@@ -133,11 +147,11 @@ function checkForUpdates(manual) {
   }
   const onNotAvailable = () => {
     cleanup()
-    dialog.showMessageBox({ type: 'info', title: 'Coin', message: "You're up to date." })
+    if (manual) dialog.showMessageBox({ type: 'info', title: 'Coin', message: "You're up to date." })
   }
   const onError = (err) => {
     cleanup()
-    dialog.showMessageBox({
+    if (manual) dialog.showMessageBox({
       type: 'error',
       title: 'Update check failed',
       message: 'Could not check for updates.',
@@ -147,7 +161,9 @@ function checkForUpdates(manual) {
   autoUpdater.once('update-not-available', onNotAvailable)
   autoUpdater.once('update-available', onAvailable)
   autoUpdater.once('error', onError)
-  autoUpdater.checkForUpdates().catch(() => {})
+  autoUpdater.checkForUpdates()
+    .catch(() => {}) // surfaced via the 'error' event above too — this just avoids an unhandled-rejection log
+    .finally(() => { checkInProgress = false })
 }
 
 ipcMain.handle('updater:check', () => checkForUpdates(true))
@@ -179,6 +195,11 @@ if (gotSingleInstanceLock) {
       setInterval(() => checkForUpdates(false), 4 * 60 * 60 * 1000)
     }
 
+    // Global shortcut works even when Coin is minimized to tray/background —
+    // the whole point, since that's its normal resting state (close-to-tray).
+    const registered = globalShortcut.register('CommandOrControl+Shift+A', () => focusAndNavigate('add'))
+    if (!registered) console.error('Failed to register global shortcut CommandOrControl+Shift+A')
+
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
     })
@@ -187,6 +208,10 @@ if (gotSingleInstanceLock) {
 
 app.on('before-quit', () => {
   isQuitting = true
+})
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll()
 })
 
 app.on('window-all-closed', () => {

@@ -1,10 +1,16 @@
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, BUDGET_TYPE_ORDER, CATEGORY_ICONS } from '../categories.js'
-import { upsertBudget, signOut, addRecurring, updateRecurring, deleteRecurring, updateEmail, updateDisplayName, addNetWorth, deleteNetWorth } from '../supabase.js'
-import { toast, downloadFile, txnsToCsv, todayISO, formatMoney, confirmDialog, frequencyLabel, escapeHtml, computeSuggestedLimits, formatDateDMY, dmyDateFieldHtml, wireDmyDateField } from '../helpers.js'
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, BUDGET_TYPE_ORDER, CATEGORY_ICONS, FREQUENCIES } from '../categories.js'
+import { upsertBudget, signOut, addRecurring, updateRecurring, deleteRecurring, updateEmail, updateDisplayName, addNetWorth, deleteNetWorth, bulkInsertTransactions, bulkInsertRecurring, bulkRestoreNetWorth, bulkInsertGoals, savePushSubscription } from '../supabase.js'
+import { toast, downloadFile, txnsToCsv, todayISO, formatMoney, confirmDialog, frequencyLabel, escapeHtml, computeSuggestedLimits, formatDateDMY, dmyDateFieldHtml, wireDmyDateField, sortByDateDesc, urlBase64ToUint8Array } from '../helpers.js'
+
+// From `npx web-push generate-vapid-keys` — the public half is safe to ship
+// client-side by design (same idea as supabase.js's anon key), it just needs
+// to match VAPID_PRIVATE_KEY on the server (api/check-budget-alerts.js, set
+// as a Vercel env var, never committed) or subscriptions stop working.
+const VAPID_PUBLIC_KEY = 'BIpc_gh2sKjZIJeIs6idrop8Tth8SROQMyxz-fLCzj-5lXuO8axFF4p9Bfyv_n9ahV64SkR4Shit-NPiB23SH8U'
 import { ACCENTS, getMode, setMode, getAccent, setAccent } from '../theme.js'
 import { isPrivacyMode, setPrivacyMode } from '../privacy.js'
-
-const FREQUENCIES = ['daily', 'weekly', 'monthly', 'quarterly', 'annually']
+import { latestAccountValues } from '../analysisData.js'
+import { seedNetWorthItems, netWorthItemRowsHtml, wireNetWorthItemRows, cleanNetWorthItems, findInvalidNetWorthItem } from '../netWorthForm.js'
 
 // form state for the Repeat Purchases add/edit card — persists across the
 // recursive re-renders this file does after every small change (same pattern
@@ -13,7 +19,7 @@ let recurringForm = null
 let networthForm = null
 
 export function renderSettings(container, opts) {
-  const { budgets, txns, recurring, networth, session, onBudgetsChanged, onRecurringChanged, onNetWorthChanged, onSignedOut, onSessionChanged } = opts
+  const { budgets, txns, recurring, networth, goals, session, onBudgetsChanged, onRecurringChanged, onNetWorthChanged, onSignedOut, onSessionChanged } = opts
 
   const displayName = session?.user?.user_metadata?.display_name || ''
   const suggestedLimits = computeSuggestedLimits(txns, 3)
@@ -95,6 +101,12 @@ export function renderSettings(container, opts) {
       <div style="font-size:12px;color:var(--text2);margin-top:10px">Fills the fields above from your average spend per category over the last 3 months — review before saving.</div>
     </div>
 
+    <h2>Budget Alerts</h2>
+    <div class="card" style="margin-bottom:16px">
+      <div style="font-size:13px;color:var(--text2);margin-bottom:12px">Get a push notification when a budget category crosses 90% or 100% for the month.</div>
+      <button class="btn secondary" id="enableAlertsBtn">Enable Budget Alerts</button>
+    </div>
+
     <h2>Repeat Purchases</h2>
     ${recurringForm ? renderRecurringForm(recurringForm) : ''}
     <div class="card" style="margin-bottom:16px">
@@ -120,7 +132,7 @@ export function renderSettings(container, opts) {
     ${networthForm ? renderNetWorthForm(networthForm) : ''}
     <div class="privacy-wrap${isPrivacyMode() ? ' active' : ''}" style="margin-bottom:16px">
       <div class="card">
-        ${networth.length === 0 ? '<div class="empty-state">No check-ins yet — log your account balances periodically to see a trend in Analysis.</div>' : [...networth].sort((a, b) => b.date.localeCompare(a.date)).map(n => `
+        ${networth.length === 0 ? '<div class="empty-state">No check-ins yet — log your account balances periodically to see a trend in Analysis.</div>' : sortByDateDesc(networth).map(n => `
           <div class="networth-row" data-id="${n.id}">
             <div class="networth-main">
               <div class="networth-date">${formatDateDMY(n.date)}</div>
@@ -135,13 +147,30 @@ export function renderSettings(container, opts) {
       ${isPrivacyMode() ? '<div class="privacy-overlay">🔒 Balances hidden</div>' : ''}
     </div>
 
+    <h2>Goals</h2>
+    <div class="card" style="margin-bottom:16px">
+      <div style="font-size:13px;color:var(--text2);margin-bottom:12px">${goals.length ? `${goals.length} savings goal${goals.length === 1 ? '' : 's'} tracked.` : 'Set a target for something specific, like a renovation fund or a trip.'}</div>
+      <button class="btn secondary" id="goalsBtn">${goals.length ? 'Manage Goals' : '+ Add a Goal'}</button>
+    </div>
+
+    <h2>Year in Review</h2>
+    <div class="card" style="margin-bottom:16px">
+      <div style="font-size:13px;color:var(--text2);margin-bottom:12px">A recap of any year you've logged — income, spending, top categories, and personal records.</div>
+      <button class="btn secondary" id="yearReviewBtn">View Year in Review</button>
+    </div>
+
     <h2>Data</h2>
     <div class="card" style="margin-bottom:16px">
-      <div style="font-size:13px;color:var(--text2);margin-bottom:12px">Export all ${txns.length} transaction${txns.length === 1 ? '' : 's'} as a backup or to open in a spreadsheet.</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:12px">Export all ${txns.length} transaction${txns.length === 1 ? '' : 's'} as a spreadsheet, or a full backup of everything in your account.</div>
       <div style="display:flex;gap:10px">
         <button class="btn secondary" id="exportCsv">Export CSV</button>
-        <button class="btn secondary" id="exportJson">Export JSON</button>
+        <button class="btn secondary" id="exportJson">Export Backup</button>
       </div>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <div style="font-size:13px;color:var(--text2);margin-bottom:12px">Restore transactions, budgets, repeat purchases, and net worth check-ins from a backup file. This <strong>adds</strong> records — it never replaces or removes anything already in your account, so restoring the same file twice will duplicate everything in it.</div>
+      <input type="file" accept="application/json" id="restoreFileInput" style="display:none" />
+      <button class="btn secondary" id="restoreBackupBtn">Restore from Backup…</button>
     </div>
 
     ${window.electronAPI?.isElectron ? `
@@ -171,11 +200,76 @@ export function renderSettings(container, opts) {
     btn.onclick = () => { setAccent(btn.dataset.accent); renderSettings(container, opts) }
   })
 
+  container.querySelector('#yearReviewBtn').onclick = () => opts.onViewYearReview()
+
+  container.querySelector('#enableAlertsBtn').onclick = async () => {
+    if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+      toast("This browser doesn't support push notifications")
+      return
+    }
+    const permission = await Notification.requestPermission()
+    if (permission !== 'granted') { toast('Notification permission denied'); return }
+    try {
+      const reg = await navigator.serviceWorker.ready
+      let sub = await reg.pushManager.getSubscription()
+      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) })
+      await savePushSubscription(sub)
+      toast('Budget alerts enabled')
+    } catch (e) {
+      toast(e.message || 'Failed to enable alerts')
+    }
+  }
+  container.querySelector('#goalsBtn').onclick = () => opts.onViewGoals()
+
   container.querySelector('#exportCsv').onclick = () => {
     downloadFile(`coin-transactions-${todayISO()}.csv`, txnsToCsv(txns), 'text/csv')
   }
   container.querySelector('#exportJson').onclick = () => {
-    downloadFile(`coin-transactions-${todayISO()}.json`, JSON.stringify(txns, null, 2), 'application/json')
+    const backup = { version: 1, exportedAt: new Date().toISOString(), txns, budgets, recurring, networth, goals }
+    downloadFile(`coin-backup-${todayISO()}.json`, JSON.stringify(backup, null, 2), 'application/json')
+  }
+
+  container.querySelector('#restoreBackupBtn').onclick = () => container.querySelector('#restoreFileInput').click()
+  container.querySelector('#restoreFileInput').onchange = async (e) => {
+    const file = e.target.files[0]
+    e.target.value = '' // lets picking the same file again fire onchange a second time
+    if (!file) return
+
+    let backup
+    try {
+      backup = JSON.parse(await file.text())
+    } catch {
+      toast('Not a valid backup file')
+      return
+    }
+    if (!backup || typeof backup !== 'object' || !backup.version) {
+      toast('Not a valid backup file')
+      return
+    }
+
+    const counts = [
+      backup.txns?.length && `${backup.txns.length} transaction${backup.txns.length === 1 ? '' : 's'}`,
+      backup.budgets?.length && `${backup.budgets.length} budget${backup.budgets.length === 1 ? '' : 's'}`,
+      backup.recurring?.length && `${backup.recurring.length} repeat purchase${backup.recurring.length === 1 ? '' : 's'}`,
+      backup.networth?.length && `${backup.networth.length} net worth check-in${backup.networth.length === 1 ? '' : 's'}`,
+      backup.goals?.length && `${backup.goals.length} goal${backup.goals.length === 1 ? '' : 's'}`,
+    ].filter(Boolean).join(', ')
+    if (!counts) { toast('Backup file is empty'); return }
+
+    const ok = await confirmDialog(`Import ${counts}? This adds new records — it won't replace or remove anything already in your account.`, 'Import', false)
+    if (!ok) return
+
+    try {
+      if (backup.txns?.length) await bulkInsertTransactions(backup.txns)
+      if (backup.budgets?.length) for (const b of backup.budgets) await upsertBudget(b.category, b.monthly_limit, b.budget_type)
+      if (backup.recurring?.length) await bulkInsertRecurring(backup.recurring)
+      if (backup.networth?.length) await bulkRestoreNetWorth(backup.networth)
+      if (backup.goals?.length) await bulkInsertGoals(backup.goals)
+      toast('Backup restored')
+      await opts.onDataRestored()
+    } catch (e) {
+      toast(e.message || 'Restore failed — some records may have been partially imported')
+    }
   }
 
   function updateTotal() {
@@ -269,7 +363,7 @@ export function renderSettings(container, opts) {
     renderSettings(container, opts)
   })
   container.querySelector('#addNetWorthBtn')?.addEventListener('click', () => {
-    networthForm = { date: todayISO(), items: [{ name: '', category: 'cash', value: '' }] }
+    networthForm = { date: todayISO(), items: seedNetWorthItems(latestAccountValues(opts.networth)) }
     renderSettings(container, opts)
   })
   container.querySelectorAll('.networth-delete').forEach(btn => {
@@ -480,18 +574,8 @@ function renderNetWorthForm(form) {
       <label style="margin-top:0">Date</label>
       <input id="nwDate" type="date" value="${form.date}" />
       <label>Accounts</label>
-      ${form.items.map((it, i) => `
-        <div class="nw-item-row" data-index="${i}">
-          <input class="nwItemName" type="text" placeholder="e.g. KBANK Savings" value="${escapeHtml(it.name)}" />
-          <select class="nwItemCategory">
-            <option value="cash" ${it.category === 'cash' ? 'selected' : ''}>Cash</option>
-            <option value="invested" ${it.category === 'invested' ? 'selected' : ''}>Invested</option>
-            <option value="insurance" ${it.category === 'insurance' ? 'selected' : ''}>Insurance</option>
-          </select>
-          <input class="nwItemValue" type="number" inputmode="decimal" placeholder="0" value="${escapeHtml(it.value)}" />
-          <button class="nwItemRemove" type="button" ${form.items.length <= 1 ? 'disabled' : ''}>✕</button>
-        </div>
-      `).join('')}
+      ${netWorthItemRowsHtml(form.items)}
+      <div style="font-size:11.5px;color:var(--text3);margin-top:6px">Leave a balance blank to skip that account this time — it won't be zeroed out.</div>
       <button class="btn secondary" id="nwAddItem" style="margin-top:8px">+ Add Account</button>
       <div style="display:flex;gap:10px;margin-top:16px">
         <button class="btn" id="nwSave">Add</button>
@@ -507,26 +591,17 @@ function wireNetWorthForm(container, opts) {
   container.querySelector('#nwDate').oninput = e => { networthForm.date = e.target.value }
   container.querySelector('#nwCancel').onclick = () => { networthForm = null; renderSettings(container, opts) }
 
-  container.querySelectorAll('.nw-item-row').forEach(row => {
-    const i = Number(row.dataset.index)
-    row.querySelector('.nwItemName').oninput = e => { networthForm.items[i].name = e.target.value }
-    row.querySelector('.nwItemCategory').onchange = e => { networthForm.items[i].category = e.target.value }
-    row.querySelector('.nwItemValue').oninput = e => { networthForm.items[i].value = e.target.value }
-    row.querySelector('.nwItemRemove').onclick = () => {
-      networthForm.items.splice(i, 1)
-      renderSettings(container, opts)
-    }
-  })
+  wireNetWorthItemRows(container, networthForm.items, { onChange: () => renderSettings(container, opts) })
 
   container.querySelector('#nwAddItem').onclick = () => {
-    networthForm.items.push({ name: '', category: 'cash', value: '' })
+    networthForm.items.push({ name: '', category: 'cash', value: '', lastValue: null })
     renderSettings(container, opts)
   }
 
   container.querySelector('#nwSave').onclick = async () => {
-    const cleaned = networthForm.items
-      .map(it => ({ name: it.name.trim(), category: it.category, value: parseFloat(it.value) || 0 }))
-      .filter(it => it.name)
+    const invalidRow = findInvalidNetWorthItem(networthForm.items)
+    if (invalidRow) { toast(`Can't work out "${invalidRow.value}" for ${invalidRow.name.trim()}`); return }
+    const cleaned = cleanNetWorthItems(networthForm.items)
     if (!networthForm.date) { toast('Pick a date'); return }
     if (!cleaned.length) { toast('Add at least one named account'); return }
     const btn = container.querySelector('#nwSave')

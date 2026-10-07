@@ -1,18 +1,41 @@
 import './style.css'
-import { getSession, onAuthChange, fetchTransactions, fetchBudgets, fetchRecurring, addTransaction, updateRecurring, fetchNetWorth, fetchSuggestions } from './supabase.js'
+import { getSession, onAuthChange, fetchTransactions, fetchBudgets, fetchRecurring, addTransaction, updateRecurring, fetchNetWorth, fetchSuggestions, fetchGoals } from './supabase.js'
 import { renderAuth } from './views/auth.js'
 import { renderQuickAdd } from './views/quickAdd.js'
 import { renderTransactions } from './views/transactions.js'
 import { renderDashboard } from './views/dashboard.js'
 import { renderAnalysis } from './views/analysis.js'
 import { renderSettings } from './views/settings.js'
+import { renderAsk } from './views/ask.js'
+import { renderYearReview } from './views/yearReview.js'
+import { renderGoals } from './views/goals.js'
 import { toast, cacheData, getCachedData, todayISO, advanceDate } from './helpers.js'
 import { categoryBudgetType } from './categories.js'
 import { applyTheme } from './theme.js'
+import { onDesktopViewChange } from './platform.js'
 
 applyTheme()
 
+// AI Q&A is built (see views/ask.js, api/ask.js) but needs an OPENAI_API_KEY
+// set in Vercel before it can answer anything — hidden from the tab bar
+// until that's done. The 'ask' view branch below stays wired so flipping
+// this back on is a one-line change.
+const ASK_ENABLED = false
+
 const app = document.getElementById('app')
+
+// render() already fully rebuilds #app on every state change, so reacting to
+// a desktop/mobile breakpoint crossing this way (rather than a resize
+// listener with its own diffing) is consistent with the existing pattern,
+// not new architecture. Lets Analysis's investment section (and anything
+// else that forks by isDesktopView()) swap live instead of only on next nav.
+onDesktopViewChange(() => render())
+
+// Electron's global shortcut (main.cjs, CommandOrControl+Shift+A) sends this
+// after focusing the window — setView isn't defined yet at this point in the
+// module (function declarations are hoisted, so this still resolves fine by
+// the time the event actually fires, well after boot() has run).
+window.electronAPI?.onNavigate?.((view) => setView(view))
 
 const now = new Date()
 const state = {
@@ -23,6 +46,7 @@ const state = {
   recurring: [],
   networth: [],
   suggestions: [],
+  goals: [],
   year: now.getFullYear(),
   month: now.getMonth(),
   range: 1,
@@ -65,9 +89,32 @@ async function loadNetWorth() {
   }
 }
 
+async function loadGoals() {
+  try {
+    state.goals = await fetchGoals()
+  } catch {
+    state.goals = [] // table may not exist yet on an older install — best-effort, not fatal
+  }
+}
+
 // Posts any 'auto' repeat purchase whose next_due date has arrived as a real
 // transaction, then advances next_due — looping per item in case the app was
 // closed across more than one period (e.g. monthly rent, two months unopened).
+// addTransaction for a period has already succeeded by the time this runs —
+// a transient failure here (unlike addTransaction failing) would leave
+// next_due stale and cause that same period to be reposted as a duplicate on
+// the next launch, so it's worth a couple of retries before giving up.
+async function updateRecurringWithRetry(id, patch, attempts = 3) {
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      return await updateRecurring(id, patch)
+    } catch (e) {
+      if (i === attempts) throw e
+      await new Promise(r => setTimeout(r, 500 * i))
+    }
+  }
+}
+
 async function processRecurring() {
   try {
     state.recurring = await fetchRecurring()
@@ -100,7 +147,7 @@ async function processRecurring() {
         // persist progress after every period, not just at the end — if a
         // later period in this same item fails, we don't want the next
         // launch re-posting the ones that already succeeded as duplicates
-        await updateRecurring(r.id, { next_due: nextDue })
+        await updateRecurringWithRetry(r.id, { next_due: nextDue })
       }
     } catch (e) {
       failed = true
@@ -144,7 +191,19 @@ async function refreshAndRender(nextView) {
   render()
 }
 
+// render() rebuilds #app from scratch on every state change (no diffing
+// anywhere in this app) — wrapping that in the View Transition API turns an
+// instant swap into a brief native crossfade, for free, without touching any
+// of the ~15 call sites that already call render(). Falls back to the plain
+// swap in browsers without support, and is skipped outright when the person
+// has asked their OS for reduced motion (motion.md: "make motion optional").
 function render() {
+  const skip = !document.startViewTransition || window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  if (skip) renderImmediate()
+  else document.startViewTransition(() => renderImmediate())
+}
+
+function renderImmediate() {
   app.innerHTML = ''
 
   if (!state.session) {
@@ -181,6 +240,7 @@ function render() {
       onBillsChanged: async () => { await loadData(); render() },
       suggestions: state.suggestions,
       onSuggestionsChanged: async () => { await loadData(); render() },
+      goals: state.goals,
     })
   } else if (state.view === 'transactions') {
     renderTransactions(screen, {
@@ -211,12 +271,37 @@ function render() {
       txns: state.txns,
       recurring: state.recurring,
       networth: state.networth,
+      goals: state.goals,
       session: state.session,
       onBudgetsChanged: async () => { state.budgets = await fetchBudgets(); render() },
       onRecurringChanged: async () => { state.recurring = await fetchRecurring(); render() },
       onNetWorthChanged: async () => { await loadNetWorth(); render() },
       onSessionChanged: async () => { state.session = await getSession(); render() },
       onSignedOut: () => { state.session = null; render() },
+      onViewYearReview: () => setView('yearReview'),
+      onViewGoals: () => setView('goals'),
+      // backup restore can touch all five tables at once — one combined
+      // refresh instead of chaining the single-table callbacks above
+      onDataRestored: async () => { await loadData(); await loadNetWorth(); await loadGoals(); render() },
+    })
+  } else if (state.view === 'yearReview') {
+    renderYearReview(screen, {
+      txns: state.txns,
+      onBack: () => setView('settings'),
+    })
+  } else if (state.view === 'goals') {
+    renderGoals(screen, {
+      goals: state.goals,
+      networth: state.networth,
+      onBack: () => setView('settings'),
+      onGoalsChanged: async () => { await loadGoals(); render() },
+    })
+  } else if (state.view === 'ask') {
+    renderAsk(screen, {
+      txns: state.txns,
+      budgets: state.budgets,
+      networth: state.networth,
+      session: state.session,
     })
   }
 
@@ -235,6 +320,11 @@ function render() {
     <button class="tab ${state.view === 'analysis' ? 'active' : ''}" data-view="analysis">
       <span style="font-size:20px">📊</span><span>Analysis</span>
     </button>
+    ${ASK_ENABLED ? `
+    <button class="tab ${state.view === 'ask' ? 'active' : ''}" data-view="ask">
+      <span style="font-size:20px">💬</span><span>Ask</span>
+    </button>
+    ` : ''}
     <button class="tab ${state.view === 'settings' ? 'active' : ''}" data-view="settings">
       <span style="font-size:20px">⚙️</span><span>Settings</span>
     </button>
@@ -269,6 +359,7 @@ async function boot() {
       await loadData()
       await processRecurring()
       await loadNetWorth()
+      await loadGoals()
     } catch (e) {
       toast(e.message || 'Failed to load data')
     }

@@ -201,6 +201,94 @@ create index if not exists coin_suggestions_user_status_idx on coin_suggestions(
 
 Lets Claude propose a transaction (e.g. from a bank-statement reconciliation) without ever writing to `coin_transactions` directly. Shows up as a **Suggestions** card on the Dashboard — Accept posts it as a real transaction through your own session, Decline just removes it. Claude authenticates via a session saved by `scripts/save-session.js` (you run that yourself — your password is never seen by Claude), then writes rows with `scripts/suggest.js`. That saved session technically carries the same access your login does (Supabase can't scope a session to one table), so `.coin-session.json` is gitignored and should be treated like a saved browser session — delete it any time to revoke access.
 
+## Adding free-form tags to transactions (2026-09-27)
+
+Run this once — additive, existing rows default to an empty array:
+
+```sql
+alter table coin_transactions add column if not exists tags text[] not null default '{}';
+```
+
+Optional free-text labels on a transaction (e.g. "reimbursable", a trip name), separate from the fixed `category`/`subcategory` fields. Collapsed behind a "+ Add tags" link on Add/Edit Transaction so it doesn't add visual weight to the common case of not using them. Searchable from Transactions' existing filter box, and included in the CSV/JSON exports.
+
+## Adding savings goals (2026-09-27)
+
+Run this once — a new table, doesn't touch anything existing:
+
+```sql
+create table coin_goals (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  name text not null,
+  target_amount numeric not null,
+  target_date date,
+  current_amount numeric not null default 0,
+  linked_account text, -- optional: matches a net-worth item name for auto-tracked progress
+  created_at timestamptz not null default now()
+);
+alter table coin_goals enable row level security;
+create policy "own rows" on coin_goals for all
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+```
+
+Sinking funds / savings targets (Settings → Goals, and a Dashboard widget). Progress either comes from `current_amount`, which you update by hand, or — if `linked_account` names one of your net-worth accounts — from that account's latest logged value, same lookup Analysis's Net Worth section already uses.
+
+## Adding receipt photo attachments (2026-09-27)
+
+Run this once — a new private Storage bucket plus one new column:
+
+```sql
+insert into storage.buckets (id, name, public) values ('receipts', 'receipts', false);
+create policy "own receipt files" on storage.objects for all
+  using (bucket_id = 'receipts' and (storage.foldername(name))[1] = auth.uid()::text)
+  with check (bucket_id = 'receipts' and (storage.foldername(name))[1] = auth.uid()::text);
+
+alter table coin_transactions add column if not exists receipt_path text;
+```
+
+Private bucket (these are financial documents) — every object lives under `<user_id>/...`, and the policy scopes access to that folder matching `auth.uid()`, same ownership model as every table's RLS policy above but for Storage objects instead of rows. The app fetches images via a short-lived signed URL, never a public one.
+
+## Adding budget threshold push alerts (2026-09-27)
+
+Run this once — two new tables:
+
+```sql
+create table coin_push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  endpoint text not null unique,
+  p256dh text not null,
+  auth text not null,
+  created_at timestamptz not null default now()
+);
+alter table coin_push_subscriptions enable row level security;
+create policy "own rows" on coin_push_subscriptions for all
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- Written only by api/check-budget-alerts.js via the service-role key, which
+-- bypasses RLS regardless — enabled with no policies so anon/authenticated
+-- clients are flat-out denied instead of implicitly allowed (Supabase Studio
+-- flags a table with RLS off as a warning when you run this; choose "Run and
+-- enable RLS" rather than "Run without RLS").
+create table coin_budget_alerts_sent (
+  user_id uuid not null,
+  category text not null,
+  month text not null, -- 'YYYY-MM'
+  sent_at timestamptz not null default now(),
+  primary key (user_id, category, month)
+);
+alter table coin_budget_alerts_sent enable row level security;
+```
+
+A daily Vercel Cron job (`api/check-budget-alerts.js`) checks everyone's current-month spend per category against `coin_budgets.monthly_limit` and sends a push notification the first time a category crosses 90% or 100% that month — `coin_budget_alerts_sent` is just a dedupe log so it doesn't repeat.
+
+**This needs real setup before it does anything** (same relationship the AI Q&A feature has with `OPENAI_API_KEY` — the code ships regardless, it just won't send anything until these are done):
+
+1. Generate a VAPID key pair: `npx web-push generate-vapid-keys`
+2. In Vercel (Project Settings → Environment Variables), set: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (e.g. `mailto:you@example.com`), `SUPABASE_SERVICE_ROLE_KEY` (Supabase dashboard → Project Settings → API → service_role key — never expose this client-side), `CRON_SECRET` (any random string — Vercel sends it back as the cron request's own Bearer token automatically once set)
+3. Put the same `VAPID_PUBLIC_KEY` value into `src/views/settings.js`'s subscribe flow (it's a public key, safe client-side, but still not hardcoded there yet as of this migration — see that file)
+4. Deploy — `vercel.json`'s `crons` entry picks it up automatically
+
 ## One-time data migration
 
 To bring over your existing 1,416 transactions from Ledger's `manual logs/ledger-import-all.json`, see `scripts/migrate.js` in this repo.
