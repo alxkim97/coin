@@ -1,5 +1,5 @@
 import './style.css'
-import { getSession, onAuthChange, fetchTransactions, fetchBudgets, fetchRecurring, addTransaction, updateRecurring, fetchNetWorth } from './supabase.js'
+import { getSession, onAuthChange, fetchTransactions, fetchBudgets, fetchRecurring, addTransaction, updateRecurring, fetchNetWorth, fetchSuggestions } from './supabase.js'
 import { renderAuth } from './views/auth.js'
 import { renderQuickAdd } from './views/quickAdd.js'
 import { renderTransactions } from './views/transactions.js'
@@ -22,6 +22,7 @@ const state = {
   budgets: [],
   recurring: [],
   networth: [],
+  suggestions: [],
   year: now.getFullYear(),
   month: now.getMonth(),
   range: 1,
@@ -44,6 +45,12 @@ async function loadData() {
   }
   try {
     state.recurring = await fetchRecurring()
+  } catch {
+    // table may not exist yet on an older install, or we're offline — keep
+    // whatever's already in memory rather than failing the whole refresh
+  }
+  try {
+    state.suggestions = await fetchSuggestions()
   } catch {
     // table may not exist yet on an older install, or we're offline — keep
     // whatever's already in memory rather than failing the whole refresh
@@ -172,6 +179,8 @@ function render() {
       onNetWorthChanged: async () => { await loadNetWorth(); render() },
       recurring: state.recurring,
       onBillsChanged: async () => { await loadData(); render() },
+      suggestions: state.suggestions,
+      onSuggestionsChanged: async () => { await loadData(); render() },
     })
   } else if (state.view === 'transactions') {
     renderTransactions(screen, {

@@ -172,6 +172,35 @@ alter table coin_recurring add column if not exists is_shopee boolean not null d
 
 Marks whether an expense was bought via Shopee, same pattern as the credit-card flag. Toggle it from the "Bought via Shopee" checkbox on Add/Edit Transaction and on Repeat Purchases; a 🛍️ shows next to flagged transactions in History, and a repeat purchase carries the flag through to whatever it auto-posts.
 
+## Adding Claude-suggested transactions (2026-10-07)
+
+Run this once — additive, new table only:
+
+```sql
+create table if not exists coin_suggestions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  type text not null check (type in ('income','expense')),
+  amount numeric not null check (amount > 0),
+  category text not null,
+  subcategory text,
+  notes text,
+  date date not null,
+  is_credit_card boolean not null default false,
+  is_shopee boolean not null default false,
+  budget_type text,
+  source_note text,
+  status text not null default 'pending' check (status in ('pending','accepted','declined')),
+  created_at timestamptz not null default now()
+);
+alter table coin_suggestions enable row level security;
+create policy "own rows" on coin_suggestions for all
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create index if not exists coin_suggestions_user_status_idx on coin_suggestions(user_id, status);
+```
+
+Lets Claude propose a transaction (e.g. from a bank-statement reconciliation) without ever writing to `coin_transactions` directly. Shows up as a **Suggestions** card on the Dashboard — Accept posts it as a real transaction through your own session, Decline just removes it. Claude authenticates via a session saved by `scripts/save-session.js` (you run that yourself — your password is never seen by Claude), then writes rows with `scripts/suggest.js`. That saved session technically carries the same access your login does (Supabase can't scope a session to one table), so `.coin-session.json` is gitignored and should be treated like a saved browser session — delete it any time to revoke access.
+
 ## One-time data migration
 
 To bring over your existing 1,416 transactions from Ledger's `manual logs/ledger-import-all.json`, see `scripts/migrate.js` in this repo.

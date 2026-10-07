@@ -1,16 +1,17 @@
-import { formatMoney, rangeLabel, rangeWindow, escapeHtml, effectiveDate, formatDateDMY, todayISO } from '../helpers.js'
-import { BUDGET_TYPE_ORDER, EXPENSE_CATEGORIES, CATEGORY_ICONS } from '../categories.js'
+import { formatMoney, rangeLabel, rangeWindow, escapeHtml, effectiveDate, formatDateDMY, todayISO, toast } from '../helpers.js'
+import { BUDGET_TYPE_ORDER, EXPENSE_CATEGORIES, CATEGORY_ICONS, categoryBudgetType } from '../categories.js'
 import { getOrder, setOrder, getCollapsed, toggleCollapsed } from '../dashboardLayout.js'
 import { computeCurrentLoggingStreak, computeBudgetStreak } from '../achievements.js'
 import { openNetWorthQuickLog } from '../netWorthQuickLog.js'
 import { netWorthTimeline } from '../analysisData.js'
 import { billsDue } from '../recurringReminders.js'
 import { openMarkPaidDialog } from '../markPaidDialog.js'
+import { addTransaction, deleteSuggestion } from '../supabase.js'
 
 const RANGES = [1, 3, 6, 12]
 
 export function renderDashboard(container, opts) {
-  const { txns, budgets, year, month, range, onMonthChange, onRangeChange, networth, onNetWorthChanged, recurring, onBillsChanged } = opts
+  const { txns, budgets, year, month, range, onMonthChange, onRangeChange, networth, onNetWorthChanged, recurring, onBillsChanged, suggestions, onSuggestionsChanged } = opts
   const { from, to } = rangeWindow(year, month, range)
   const rangeTxns = txns.filter(t => { const d = effectiveDate(t); return d >= from && d <= to })
 
@@ -96,6 +97,10 @@ export function renderDashboard(container, opts) {
       title: 'Bills Due',
       body: renderBillsDueWidgetBody(recurring),
     },
+    suggestions: {
+      title: 'Suggestions',
+      body: renderSuggestionsWidgetBody(suggestions),
+    },
   }
 
   const order = getOrder()
@@ -162,6 +167,46 @@ export function renderDashboard(container, opts) {
     btn.addEventListener('click', () => {
       const item = (recurring || []).find(r => r.id === btn.dataset.id)
       if (item) openMarkPaidDialog({ item, onSaved: onBillsChanged })
+    })
+  })
+
+  widgetsEl.querySelectorAll('.suggestion-accept').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const s = (suggestions || []).find(x => x.id === btn.dataset.id)
+      if (!s) return
+      btn.disabled = true
+      try {
+        await addTransaction({
+          type: s.type,
+          amount: s.amount,
+          date: s.date,
+          category: s.category,
+          subcategory: s.subcategory || null,
+          notes: s.notes || null,
+          budget_type: s.type === 'expense' ? categoryBudgetType(s.category) : null,
+          is_credit_card: s.is_credit_card || false,
+          is_shopee: s.is_shopee || false,
+        })
+        await deleteSuggestion(s.id)
+        toast('Added')
+        await onSuggestionsChanged()
+      } catch (e) {
+        btn.disabled = false
+        toast(e.message || 'Failed to accept suggestion')
+      }
+    })
+  })
+  widgetsEl.querySelectorAll('.suggestion-decline').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true
+      try {
+        await deleteSuggestion(btn.dataset.id)
+        toast('Declined')
+        await onSuggestionsChanged()
+      } catch (e) {
+        btn.disabled = false
+        toast(e.message || 'Failed to decline suggestion')
+      }
     })
   })
 }
@@ -238,6 +283,27 @@ function renderNetWorthWidgetBody(networth) {
       </div>
     </div>
   `
+}
+
+function renderSuggestionsWidgetBody(suggestions) {
+  if (!suggestions || !suggestions.length) return '<div class="empty-state">No suggestions right now.</div>'
+  return suggestions.map(s => `
+    <div class="suggestion-row">
+      <div class="suggestion-icon">${CATEGORY_ICONS[s.category] || '💵'}</div>
+      <div class="suggestion-main">
+        <div class="suggestion-top">
+          <span class="suggestion-cat">${escapeHtml(s.category)}${s.subcategory ? ' · ' + escapeHtml(s.subcategory) : ''}</span>
+          <span class="suggestion-amt ${s.type}">${s.type === 'income' ? '+' : '−'}${formatMoney(s.amount)}</span>
+        </div>
+        <div class="suggestion-date">${formatDateDMY(s.date)}${s.notes ? ' · ' + escapeHtml(s.notes) : ''}</div>
+        ${s.source_note ? `<div class="suggestion-source">${escapeHtml(s.source_note)}</div>` : ''}
+      </div>
+      <div class="suggestion-actions">
+        <button class="suggestion-decline" data-id="${s.id}" aria-label="Decline">✕</button>
+        <button class="suggestion-accept" data-id="${s.id}" aria-label="Accept">✓</button>
+      </div>
+    </div>
+  `).join('')
 }
 
 function renderBillsDueWidgetBody(recurring) {

@@ -113,6 +113,20 @@ export async function deleteRecurring(id) {
   if (error) throw error
 }
 
+/* ── Suggested transactions (e.g. from Claude) — never auto-committed;
+   Accept posts a real transaction through this session, Decline just
+   removes the suggestion. ── */
+export async function fetchSuggestions() {
+  const { data, error } = await supa.from('coin_suggestions').select('*').order('created_at', { ascending: true })
+  if (error) throw error
+  return data
+}
+
+export async function deleteSuggestion(id) {
+  const { error } = await supa.from('coin_suggestions').delete().eq('id', id)
+  if (error) throw error
+}
+
 /* ── Net worth check-ins ── */
 
 export async function fetchNetWorth() {

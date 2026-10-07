@@ -16,6 +16,9 @@ release
 # CSV exports contain real transaction data — never commit these
 exports
 
+# Saved Supabase session — carries full account access, never commit this
+.coin-session.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
