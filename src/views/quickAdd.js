@@ -87,6 +87,22 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
     return type === 'expense' ? EXPENSE_CATEGORIES.map(c => c.name) : INCOME_CATEGORIES
   }
 
+  // The full chip list (15 expense categories) reads as busy, so show the 6
+  // used most in the last 180 days — kept in the usual category order for
+  // muscle memory — plus a More chip. The selected category always shows.
+  let showAllCats = false
+  function visibleCats() {
+    const all = cats()
+    if (showAllCats || all.length <= 6) return all
+    const since = new Date(); since.setDate(since.getDate() - 180)
+    const sinceStr = since.toISOString().slice(0, 10)
+    const counts = {}
+    for (const t of txns || []) if (t.type === type && t.date >= sinceStr) counts[t.category] = (counts[t.category] || 0) + 1
+    const top = new Set([...all].sort((a, b) => (counts[b] || 0) - (counts[a] || 0)).slice(0, 6))
+    if (category) top.add(category)
+    return all.filter(c => top.has(c))
+  }
+
   function quickItems() {
     return (recurring || []).filter(r => r.active && r.mode === 'quick' && r.type === type)
   }
@@ -162,7 +178,7 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
       </div>
 
       ${quicks.length ? `
-        <label>Frequently Used</label>
+        <label>Frequently used</label>
         <div class="quick-chip-row" id="quickChips">
           ${quicks.map(r => `
             <button type="button" class="quick-chip" data-id="${r.id}">
@@ -179,7 +195,8 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
 
       <label>Category</label>
       <div class="chip-grid" id="catGrid">
-        ${categoryList.map(c => `<div class="chip ${c === category ? 'active' : ''}" data-cat="${c}">${c}</div>`).join('')}
+        ${visibleCats().map(c => `<div class="chip ${c === category ? 'active' : ''}" data-cat="${c}">${c}</div>`).join('')}
+        ${categoryList.length > 6 ? `<button type="button" class="chip chip-more" id="catMore">${showAllCats ? 'Fewer' : 'More'}</button>` : ''}
       </div>
 
       <label>Vendor / Note</label>
@@ -227,7 +244,9 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
         container.querySelector('#amountInput')?.focus()
       }
     })
-    container.querySelectorAll('#catGrid .chip').forEach(chip => {
+    const catMore = container.querySelector('#catMore')
+    if (catMore) catMore.onclick = () => { showAllCats = !showAllCats; draw() }
+    container.querySelectorAll('#catGrid .chip[data-cat]').forEach(chip => {
       chip.onclick = () => {
         category = chip.dataset.cat
         draw()

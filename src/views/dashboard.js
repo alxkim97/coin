@@ -10,6 +10,7 @@ import { billsDue } from '../recurringReminders.js'
 import { openMarkPaidDialog } from '../markPaidDialog.js'
 import { addTransaction, deleteSuggestion } from '../supabase.js'
 import { icon, categoryIcon } from '../icons.js'
+import { monthPickerHtml, wireMonthPicker } from '../monthPicker.js'
 
 const RANGES = [1, 3, 6, 12]
 
@@ -118,11 +119,7 @@ export function renderDashboard(container, opts) {
     <div class="range-toggle" id="rangeToggle">
       ${RANGES.map(r => `<button data-range="${r}" class="${r === range ? 'active' : ''}">${r === 1 ? '1M' : r + 'M'}</button>`).join('')}
     </div>
-    <div class="month-nav">
-      <button id="prevMonth" aria-label="Previous period">${icon('chevronLeft')}</button>
-      <div class="month-label">${rangeLabel(year, month, range)}</div>
-      <button id="nextMonth" aria-label="Next period">${icon('chevronRight')}</button>
-    </div>
+    ${monthPickerHtml({ year, month, txns, range })}
 
     <div class="card">
       <div class="summary-grid">
@@ -149,16 +146,7 @@ export function renderDashboard(container, opts) {
   container.querySelector('#rangeToggle').querySelectorAll('button').forEach(btn => {
     btn.onclick = () => onRangeChange(Number(btn.dataset.range))
   })
-  container.querySelector('#prevMonth').onclick = () => {
-    const m = month === 0 ? 11 : month - 1
-    const y = month === 0 ? year - 1 : year
-    onMonthChange(y, m)
-  }
-  container.querySelector('#nextMonth').onclick = () => {
-    const m = month === 11 ? 0 : month + 1
-    const y = month === 11 ? year + 1 : year
-    onMonthChange(y, m)
-  }
+  wireMonthPicker(container, onMonthChange)
 
   const widgetsEl = container.querySelector('#dashWidgets')
   widgetsEl.querySelectorAll('.widget-toggle').forEach(btn => {

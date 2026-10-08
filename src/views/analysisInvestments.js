@@ -188,7 +188,7 @@ export function renderNetWorthSummaryCard(container, networth) {
     <div class="top-bar" style="margin-top:6px"><h2 style="margin:0">Net worth</h2>${privacyToggleHtml('privacyToggleNw')}</div>
     <div class="privacy-wrap${privacyOn ? ' active' : ''}">
       <div class="card nw-hero-card">
-        <div class="nw-hero-value">${formatMoney(total)}</div>
+        <div class="nw-hero-value" style="--len:${formatMoney(total).length}">${formatMoney(total)}</div>
         ${changePct != null ? `<div class="nw-hero-trend ${changePct >= 0 ? 'pos' : 'neg'}">${changePct >= 0 ? '▲' : '▼'} ${Math.abs(changePct).toFixed(1)}% since first check-in</div>` : ''}
       </div>
       ${privacyOverlayHtml()}

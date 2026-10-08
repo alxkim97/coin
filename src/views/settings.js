@@ -67,6 +67,7 @@ export function renderSettings(container, opts) {
     <div class="card">
       <button class="btn danger" id="signOutBtn">Sign out</button>
     </div>
+    <div class="settings-version">Coin v${__APP_VERSION__}</div>
   `
 
   container.querySelector('#modeToggle').querySelectorAll('button').forEach(btn => {

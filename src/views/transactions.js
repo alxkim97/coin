@@ -1,6 +1,7 @@
 import { formatMoney, monthLabel, monthRange, dateHeaderLabel, formatDateDMY, localISO, escapeHtml, toast, toastWithAction } from '../helpers.js'
 import { deleteTransaction, addTransaction } from '../supabase.js'
 import { icon, categoryIcon } from '../icons.js'
+import { monthPickerHtml, wireMonthPicker } from '../monthPicker.js'
 
 // persists across re-renders within the session (module-level, like the rest of the app's view state)
 let filters = { q: '', category: 'All', min: '', max: '' }
@@ -130,11 +131,7 @@ export function renderTransactions(container, { txns, budgets, year, month, onMo
 
   container.innerHTML = `
     <div class="top-bar"><h1>Transactions</h1></div>
-    <div class="month-nav">
-      <button id="prevMonth" aria-label="Previous month">${icon('chevronLeft')}</button>
-      <div class="month-label">${monthLabel(year, month)}</div>
-      <button id="nextMonth" aria-label="Next month">${icon('chevronRight')}</button>
-    </div>
+    ${monthPickerHtml({ year, month, txns })}
 
     <div class="range-toggle" id="viewModeToggle">
       <button data-mode="list" class="${viewMode === 'list' ? 'active' : ''}">List</button>
@@ -161,16 +158,7 @@ export function renderTransactions(container, { txns, budgets, year, month, onMo
     `}
   `
 
-  container.querySelector('#prevMonth').onclick = () => {
-    const m = month === 0 ? 11 : month - 1
-    const y = month === 0 ? year - 1 : year
-    onMonthChange(y, m)
-  }
-  container.querySelector('#nextMonth').onclick = () => {
-    const m = month === 11 ? 0 : month + 1
-    const y = month === 11 ? year + 1 : year
-    onMonthChange(y, m)
-  }
+  wireMonthPicker(container, onMonthChange)
   container.querySelectorAll('#viewModeToggle button').forEach(btn => {
     btn.onclick = () => {
       viewMode = btn.dataset.mode
