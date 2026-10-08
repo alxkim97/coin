@@ -1,7 +1,8 @@
 import { Chart } from 'chart.js'
 import { computeProjection } from './analysisData.js'
 import { formatMoney } from './helpers.js'
-import { isPrivacyMode, setPrivacyMode, privacyToggleHtml } from './privacy.js'
+import { isPrivacyMode, setPrivacyMode, privacyToggleHtml, syncPrivacyButton, privacyOverlayHtml } from './privacy.js'
+import { icon } from './icons.js'
 
 // Chart.js's registerables are already registered once, by analysis.js on
 // module load — this file only needs the Chart constructor itself, same
@@ -45,7 +46,7 @@ export function openBalanceForecast({ txns, networth }) {
           <div class="proj-stats" id="projStats"></div>
           <div class="chart-box large"><canvas id="projChart"></canvas></div>
           <div class="proj-note" id="projNote"></div>
-          <div class="privacy-overlay">🔒 Balances hidden</div>
+          ${privacyOverlayHtml()}
         </div>
       </div>
     `
@@ -64,8 +65,7 @@ export function openBalanceForecast({ txns, networth }) {
         setPrivacyMode(!isPrivacyMode())
         const on = isPrivacyMode()
         overlay.querySelectorAll('.privacy-wrap').forEach(w => w.classList.toggle('active', on))
-        privacyBtn.textContent = on ? '🙈' : '👁️'
-        privacyBtn.title = on ? 'Show balances' : 'Hide balances'
+        syncPrivacyButton(privacyBtn, on)
       }
     }
   }
@@ -73,7 +73,7 @@ export function openBalanceForecast({ txns, networth }) {
   function draw() {
     const proj = computeProjection(txns, networth, horizon)
 
-    overlay.querySelector('#projPhase').innerHTML = `<span class="proj-phase-icon">${proj.phaseIcon}</span> ${proj.phase}`
+    overlay.querySelector('#projPhase').innerHTML = `<span class="proj-phase-icon">${icon(proj.phaseIcon, 18)}</span> ${proj.phase}`
     overlay.querySelector('#projStats').innerHTML = `
       <div class="proj-stat"><div class="proj-stat-label">Avg Income</div><div class="proj-stat-val">${formatMoney(proj.avgIncome)}/mo</div></div>
       <div class="proj-stat"><div class="proj-stat-label">Avg Expense</div><div class="proj-stat-val">${formatMoney(proj.avgExpense)}/mo</div></div>
@@ -81,7 +81,7 @@ export function openBalanceForecast({ txns, networth }) {
     `
     overlay.querySelector('#projNote').textContent = proj.hasCheckin
       ? ''
-      : 'No net worth check-in yet — projection starts from ฿0. Add a check-in in Settings → Net Worth for a real starting point.'
+      : 'No net worth check-in yet — projection starts from ฿0. Tap the Net worth widget on the Dashboard to log one for a real starting point.'
 
     const text3 = cssVar('--text3')
     const grid = cssVar('--chart-grid')
@@ -92,7 +92,7 @@ export function openBalanceForecast({ txns, networth }) {
       data: {
         labels: proj.points.map(p => p.label),
         datasets: [{
-          label: 'Projected Net Worth', data: proj.points.map(p => p.value),
+          label: 'Projected net worth', data: proj.points.map(p => p.value),
           borderColor: accent, backgroundColor: accent + '15', borderWidth: 2, borderDash: [6, 4],
           fill: true, tension: 0.3, pointRadius: 2,
         }],

@@ -34,17 +34,17 @@ export function renderSettings(container, opts) {
       <div style="font-size:13px;color:var(--text2);margin-bottom:12px">Export all ${txns.length} transaction${txns.length === 1 ? '' : 's'} as a spreadsheet, or a full backup of everything in your account.</div>
       <div style="display:flex;gap:10px">
         <button class="btn secondary" id="exportCsv">Export CSV</button>
-        <button class="btn secondary" id="exportJson">Export Backup</button>
+        <button class="btn secondary" id="exportJson">Export backup</button>
       </div>
     </div>
     <div class="card" style="margin-bottom:16px">
       <div style="font-size:13px;color:var(--text2);margin-bottom:12px">Restore transactions, budgets, repeat purchases, and net worth check-ins from a backup file. This <strong>adds</strong> records — it never replaces or removes anything already in your account, so restoring the same file twice will duplicate everything in it.</div>
       <input type="file" accept="application/json" id="restoreFileInput" style="display:none" />
-      <button class="btn secondary" id="restoreBackupBtn">Restore from Backup…</button>
+      <button class="btn secondary" id="restoreBackupBtn">Restore from backup…</button>
     </div>
 
     ${window.electronAPI?.isElectron ? `
-      <h2>Desktop App</h2>
+      <h2>Desktop app</h2>
       <div class="card" style="margin-bottom:16px">
         <div style="font-size:13px;color:var(--text2);margin-bottom:12px">Version <span id="appVersion">…</span> · Alex Kim — updates download in the background and prompt you to restart when ready.</div>
         <button class="btn secondary" id="checkUpdatesBtn">Check for Updates</button>
@@ -56,16 +56,16 @@ export function renderSettings(container, opts) {
       <div style="font-size:13px;color:var(--text2)">Signed in as</div>
       <div style="font-weight:600;margin-top:2px">${escapeHtml(displayName) || session?.user?.email || ''}</div>
       ${displayName ? `<div style="font-size:12px;color:var(--text3);margin-top:2px">${escapeHtml(session?.user?.email || '')}</div>` : ''}
-      <label style="margin-top:14px">Display Name</label>
+      <label style="margin-top:14px">Display name</label>
       <input id="displayNameInput" type="text" placeholder="e.g. Alex" value="${escapeHtml(displayName)}" />
       <button class="btn secondary" id="saveDisplayNameBtn" style="margin-top:10px">Save</button>
-      <label style="margin-top:16px">Change Email</label>
+      <label style="margin-top:16px">Change email</label>
       <input id="newEmailInput" type="email" placeholder="new-email@example.com" />
-      <button class="btn secondary" id="changeEmailBtn" style="margin-top:10px">Send Confirmation Link</button>
+      <button class="btn secondary" id="changeEmailBtn" style="margin-top:10px">Send confirmation link</button>
       <div style="font-size:12px;color:var(--text2);margin-top:8px">You'll get a confirmation link at the new address — nothing changes until you click it, and you keep signing in with your current email until then.</div>
     </div>
     <div class="card">
-      <button class="btn danger" id="signOutBtn">Sign Out</button>
+      <button class="btn danger" id="signOutBtn">Sign out</button>
     </div>
   `
 
@@ -158,12 +158,12 @@ export function renderSettings(container, opts) {
       toast(e.message || 'Failed to update email')
     } finally {
       btn.disabled = false
-      btn.textContent = 'Send Confirmation Link'
+      btn.textContent = 'Send confirmation link'
     }
   }
 
   container.querySelector('#signOutBtn').onclick = async () => {
-    const ok = await confirmDialog('Sign out?', 'Sign Out')
+    const ok = await confirmDialog('Sign out?', 'Sign out')
     if (!ok) return
     await signOut()
     onSignedOut()

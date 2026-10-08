@@ -1,6 +1,6 @@
 import { formatMoney, monthLabel, monthRange, dateHeaderLabel, formatDateDMY, localISO, escapeHtml, toast, toastWithAction } from '../helpers.js'
-import { CATEGORY_ICONS } from '../categories.js'
 import { deleteTransaction, addTransaction } from '../supabase.js'
+import { icon, categoryIcon } from '../icons.js'
 
 // persists across re-renders within the session (module-level, like the rest of the app's view state)
 let filters = { q: '', category: 'All', min: '', max: '' }
@@ -17,9 +17,9 @@ function txnRowHtml(t) {
       <div class="swipe-delete-action">Delete</div>
       <div class="swipe-row-content">
         <div class="txn-row" data-id="${t.id}">
-          <div class="txn-icon">${CATEGORY_ICONS[t.category] || '💵'}</div>
+          <div class="txn-icon">${categoryIcon(t.category)}</div>
           <div class="txn-main">
-            <div class="txn-cat">${escapeHtml(t.category)}${t.is_credit_card ? ' <span class="txn-cc" title="Paid via credit card">💳</span>' : ''}${t.is_shopee ? ' <span class="txn-cc" title="Bought via Shopee">🛍️</span>' : ''}${t.receipt_path ? ' <span class="txn-cc" title="Has a receipt photo">📎</span>' : ''}</div>
+            <div class="txn-cat">${escapeHtml(t.category)}${t.is_credit_card ? ` <span class="txn-cc" title="Paid via credit card">${icon('creditCard', 13)}</span>` : ''}${t.is_shopee ? ` <span class="txn-cc" title="Bought via Shopee">${icon('bag', 13)}</span>` : ''}${t.receipt_path ? ` <span class="txn-cc" title="Has a receipt photo">${icon('paperclip', 13)}</span>` : ''}</div>
             ${t.subcategory ? `<div class="txn-sub">${escapeHtml(t.subcategory)}</div>` : ''}
             ${t.tags?.length ? `<div class="txn-tags">${t.tags.map(tag => `<span class="txn-tag">${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
           </div>
@@ -131,9 +131,9 @@ export function renderTransactions(container, { txns, budgets, year, month, onMo
   container.innerHTML = `
     <div class="top-bar"><h1>Transactions</h1></div>
     <div class="month-nav">
-      <button id="prevMonth">‹</button>
+      <button id="prevMonth" aria-label="Previous month">${icon('chevronLeft')}</button>
       <div class="month-label">${monthLabel(year, month)}</div>
-      <button id="nextMonth">›</button>
+      <button id="nextMonth" aria-label="Next month">${icon('chevronRight')}</button>
     </div>
 
     <div class="range-toggle" id="viewModeToggle">

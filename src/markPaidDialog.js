@@ -20,7 +20,7 @@ export function openMarkPaidDialog({ item, onSaved }) {
       : ''
     overlay.innerHTML = `
       <div class="confirm-box">
-        <div class="nwq-title">✅ Mark Paid</div>
+        <div class="nwq-title">Mark paid</div>
         <div class="nwq-sub">${escapeHtml(item.subcategory || item.category)}${progress}</div>
         <div class="nwq-date-label">Amount</div>
         <input id="mpAmount" type="number" inputmode="decimal" value="${amount}" style="margin-bottom:12px" />

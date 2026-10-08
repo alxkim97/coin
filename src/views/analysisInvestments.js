@@ -1,7 +1,8 @@
 import { Chart } from 'chart.js'
 import { netWorthTimeline, netWorthChangePct, accountReturns } from '../analysisData.js'
 import { formatMoney, formatDateDMY, escapeHtml } from '../helpers.js'
-import { isPrivacyMode, privacyToggleHtml } from '../privacy.js'
+import { isPrivacyMode, privacyToggleHtml, privacyOverlayHtml } from '../privacy.js'
+import { icon } from '../icons.js'
 
 // Chart.js's registerables are already registered once, at module load, by
 // analysis.js — which is always imported before this file's renderers are
@@ -17,7 +18,7 @@ function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 }
 
-const CATEGORY_ICON = { cash: '💵', invested: '📈', insurance: '🛡️' }
+const CATEGORY_ICON = { cash: 'wallet', invested: 'trendingUp', insurance: 'shield' }
 const CATEGORY_LABEL = { cash: 'Cash', invested: 'Invested', insurance: 'Insurance' }
 const CATEGORY_ORDER = ['cash', 'invested', 'insurance']
 
@@ -40,8 +41,8 @@ export function renderInvestmentDepth(container, networth) {
   // it wouldn't show up as any account here even though it's real history.
   if (!netWorthTimeline(networth).length) {
     container.innerHTML = `
-      <div class="top-bar" style="margin-top:6px"><h2 style="margin:0">Net Worth</h2></div>
-      <div class="card"><div class="empty-state">No check-ins yet — add one in Settings → Net Worth.</div></div>
+      <div class="top-bar" style="margin-top:6px"><h2 style="margin:0">Net worth</h2></div>
+      <div class="card"><div class="empty-state">No check-ins yet — tap the Net worth widget on the Dashboard to log one.</div></div>
     `
     return
   }
@@ -55,7 +56,7 @@ export function renderInvestmentDepth(container, networth) {
   for (const key of CATEGORY_ORDER) groups[key].sort((a, b) => b.lastValue - a.lastValue)
 
   container.innerHTML = `
-    <div class="top-bar" style="margin-top:6px"><h2 style="margin:0">Net Worth</h2>${privacyToggleHtml('privacyToggleNw')}</div>
+    <div class="top-bar" style="margin-top:6px"><h2 style="margin:0">Net worth</h2>${privacyToggleHtml('privacyToggleNw')}</div>
     <div class="privacy-wrap${privacyOn ? ' active' : ''}">
       <div class="card"><div class="chart-box"><canvas id="networthChart"></canvas></div></div>
       ${CATEGORY_ORDER.filter(k => groups[k].length).map(k => `
@@ -64,7 +65,7 @@ export function renderInvestmentDepth(container, networth) {
           ${groups[k].map(r => holdingRowHtml(r)).join('')}
         </div>
       `).join('')}
-      <div class="privacy-overlay">🔒 Balances hidden</div>
+      ${privacyOverlayHtml()}
     </div>
   `
 
@@ -78,7 +79,7 @@ function holdingRowHtml(r) {
   const slug = r.name.replace(/[^a-z0-9]/gi, '-').toLowerCase()
   return `
     <div class="holding-row">
-      <div class="holding-icon">${CATEGORY_ICON[r.category] || '💰'}</div>
+      <div class="holding-icon">${icon(CATEGORY_ICON[r.category] || 'wallet')}</div>
       <div class="holding-main">
         <div class="holding-name">${escapeHtml(r.name)}</div>
         <div class="holding-meta">as of ${formatDateDMY(r.lastDate)}</div>
@@ -174,8 +175,8 @@ export function renderNetWorthSummaryCard(container, networth) {
 
   if (!timeline.length) {
     container.innerHTML = `
-      <div class="top-bar" style="margin-top:6px"><h2 style="margin:0">Net Worth</h2></div>
-      <div class="card"><div class="empty-state">No check-ins yet — add one in Settings → Net Worth.</div></div>
+      <div class="top-bar" style="margin-top:6px"><h2 style="margin:0">Net worth</h2></div>
+      <div class="card"><div class="empty-state">No check-ins yet — tap the Net worth widget on the Dashboard to log one.</div></div>
     `
     return
   }
@@ -184,13 +185,13 @@ export function renderNetWorthSummaryCard(container, networth) {
   const changePct = netWorthChangePct(networth)
 
   container.innerHTML = `
-    <div class="top-bar" style="margin-top:6px"><h2 style="margin:0">Net Worth</h2>${privacyToggleHtml('privacyToggleNw')}</div>
+    <div class="top-bar" style="margin-top:6px"><h2 style="margin:0">Net worth</h2>${privacyToggleHtml('privacyToggleNw')}</div>
     <div class="privacy-wrap${privacyOn ? ' active' : ''}">
       <div class="card nw-hero-card">
         <div class="nw-hero-value">${formatMoney(total)}</div>
         ${changePct != null ? `<div class="nw-hero-trend ${changePct >= 0 ? 'pos' : 'neg'}">${changePct >= 0 ? '▲' : '▼'} ${Math.abs(changePct).toFixed(1)}% since first check-in</div>` : ''}
       </div>
-      <div class="privacy-overlay">🔒 Balances hidden</div>
+      ${privacyOverlayHtml()}
     </div>
   `
 }

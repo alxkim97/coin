@@ -87,7 +87,7 @@ export function openInvestmentCalculator({ txns }) {
   function render() {
     overlay.innerHTML = `
       <div class="confirm-box modal-box-xl">
-        <div class="nwq-title">Investment Calculator</div>
+        <div class="nwq-title">Investment calculator</div>
         <div class="nwq-sub">Projection only, not a forecast — assumes each checked fund's contribution pace and a flat annual return compounded monthly, held constant for the whole horizon.</div>
 
         <div class="chart-box large"><canvas id="icChart"></canvas></div>

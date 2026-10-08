@@ -1,6 +1,6 @@
 import { addNetWorth, deleteNetWorth } from './supabase.js'
 import { toast, confirmDialog, formatMoney, formatDateDMY, sortByDateDesc, todayISO, escapeHtml } from './helpers.js'
-import { isPrivacyMode, setPrivacyMode, privacyToggleHtml } from './privacy.js'
+import { isPrivacyMode, setPrivacyMode, privacyToggleHtml, syncPrivacyButton, privacyOverlayHtml } from './privacy.js'
 import { latestAccountValues } from './analysisData.js'
 import { seedNetWorthItems, netWorthItemRowsHtml, wireNetWorthItemRows, cleanNetWorthItems, findInvalidNetWorthItem } from './netWorthForm.js'
 
@@ -29,7 +29,7 @@ export function openNetWorthCheckins({ networth, onNetWorthChanged }) {
     overlay.innerHTML = `
       <div class="confirm-box modal-box-lg">
         <div class="nwq-title" style="display:flex;align-items:center;justify-content:space-between">
-          <span>Net Worth</span>
+          <span>Net worth</span>
           ${privacyToggleHtml('privacyToggleNwc')}
         </div>
         <div class="nwq-sub">Check-in history — tap Delete to remove one, or add a new check-in below.</div>
@@ -49,8 +49,8 @@ export function openNetWorthCheckins({ networth, onNetWorthChanged }) {
               </div>
             `).join('')}
           </div>
-          ${!form ? '<button class="btn secondary" id="nwcAddBtn" style="margin-top:12px">+ Add Check-in</button>' : ''}
-          <div class="privacy-overlay">🔒 Balances hidden</div>
+          ${!form ? '<button class="btn secondary" id="nwcAddBtn" style="margin-top:12px">Add check-in</button>' : ''}
+          ${privacyOverlayHtml()}
         </div>
       </div>
     `
@@ -75,8 +75,7 @@ export function openNetWorthCheckins({ networth, onNetWorthChanged }) {
         setPrivacyMode(!isPrivacyMode())
         const on = isPrivacyMode()
         overlay.querySelectorAll('.privacy-wrap').forEach(w => w.classList.toggle('active', on))
-        privacyBtn.textContent = on ? '🙈' : '👁️'
-        privacyBtn.title = on ? 'Show balances' : 'Hide balances'
+        syncPrivacyButton(privacyBtn, on)
       }
     }
 
@@ -138,7 +137,7 @@ export function openNetWorthCheckins({ networth, onNetWorthChanged }) {
 function formHtml(form) {
   return `
     <div class="card" style="margin-bottom:16px">
-      <div style="font-weight:700;font-size:14px;margin-bottom:12px">New Check-in</div>
+      <div style="font-weight:700;font-size:14px;margin-bottom:12px">New check-in</div>
       <label style="margin-top:0">Date</label>
       <input id="nwDate" type="date" value="${form.date}" />
       <label>Accounts</label>

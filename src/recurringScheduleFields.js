@@ -1,7 +1,7 @@
 import { FREQUENCIES } from './categories.js'
 import { frequencyLabel, dmyDateFieldHtml, wireDmyDateField } from './helpers.js'
 
-// Shared by quickAdd.js's inline "Also save as Repeat Purchase" card and
+// Shared by quickAdd.js's inline "Also save as repeat purchase" card and
 // recurringFormDialog.js's standalone add/edit popup — the part of a repeat
 // purchase that's genuinely identical in both places: how often it recurs,
 // and (for Remind items) how many payments. Each caller still owns its own

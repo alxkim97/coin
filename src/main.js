@@ -8,13 +8,14 @@ import { renderAnalysis } from './views/analysis.js'
 import { renderSettings } from './views/settings.js'
 import { renderAsk } from './views/ask.js'
 import { renderBudget } from './views/budget.js'
+import { icon } from './icons.js'
 import { openNetWorthCheckins } from './netWorthCheckins.js'
 import { toast, cacheData, getCachedData, todayISO, advanceDate, sortByDateDesc, formatMoney } from './helpers.js'
 import { categoryBudgetType } from './categories.js'
 import { applyTheme } from './theme.js'
 import { isDesktopView, onDesktopViewChange } from './platform.js'
 import { monthlyRollup, netWorthTimeline } from './analysisData.js'
-import { isPrivacyMode, setPrivacyMode, privacyToggleHtml } from './privacy.js'
+import { isPrivacyMode, setPrivacyMode, privacyToggleHtml, syncPrivacyButton, privacyOverlayHtml } from './privacy.js'
 
 applyTheme()
 
@@ -157,7 +158,7 @@ async function processRecurring() {
       // keep going — one item's failure shouldn't block the others in this batch
     }
   }
-  if (failed) toast('Some repeat purchases failed to log — check Settings and try again later')
+  if (failed) toast('Some repeat purchases failed to log — check Add → Manage repeat purchases and try again later')
   if (logged) {
     toast(`Auto-logged ${logged} repeat purchase${logged === 1 ? '' : 's'}`)
     await loadData()
@@ -322,35 +323,35 @@ function renderImmediate() {
   tabbar.className = 'tabbar'
   tabbar.innerHTML = `
     <div class="tabbar-brand">
-      <img src="/favicon.svg" alt="" class="tabbar-brand-logo" />
+      <img src="./favicon.svg" alt="" class="tabbar-brand-logo" />
       <span class="tabbar-brand-name">Coin</span>
     </div>
     <div class="nav-label">Overview</div>
     <button class="tab ${state.view === 'dashboard' ? 'active' : ''}" data-view="dashboard">
-      <span style="font-size:20px">🏠</span><span>Home</span>
+      ${icon('dashboard', 20)}<span>Home</span>
     </button>
     <button class="tab ${state.view === 'transactions' ? 'active' : ''}" data-view="transactions">
-      <span style="font-size:20px">📜</span><span>History</span>
+      ${icon('history', 20)}<span>History</span>
     </button>
     <button class="tab ${state.view === 'add' ? 'active' : ''}" data-view="add">
-      <span style="font-size:20px">➕</span><span>Add</span>
+      ${icon('add', 20)}<span>Add</span>
     </button>
     <div class="nav-label">Planning</div>
     <button class="tab ${state.view === 'budget' ? 'active' : ''}" data-view="budget">
-      <span style="font-size:20px">🎯</span><span>Budget</span>
+      ${icon('budget', 20)}<span>Budget</span>
     </button>
     <div class="nav-label">Analysis</div>
     <button class="tab ${state.view === 'analysis' ? 'active' : ''}" data-view="analysis">
-      <span style="font-size:20px">📊</span><span>Analysis</span>
+      ${icon('analysis', 20)}<span>Analysis</span>
     </button>
     ${ASK_ENABLED ? `
     <button class="tab ${state.view === 'ask' ? 'active' : ''}" data-view="ask">
-      <span style="font-size:20px">💬</span><span>Ask</span>
+      ${icon('chat', 20)}<span>Ask</span>
     </button>
     ` : ''}
     <div class="nav-label">System</div>
     <button class="tab ${state.view === 'settings' ? 'active' : ''}" data-view="settings">
-      <span style="font-size:20px">⚙️</span><span>Settings</span>
+      ${icon('settings', 20)}<span>Settings</span>
     </button>
   `
   tabbar.querySelectorAll('.tab').forEach(btn => {
@@ -384,7 +385,7 @@ function renderImmediate() {
         </div>
         <div class="privacy-wrap${privacyOn ? ' active' : ''}">
           <div class="sidebar-nw-total">${latestNw ? formatMoney(latestNw.total) : '—'}</div>
-          <div class="privacy-overlay">🔒 Hidden</div>
+          ${privacyOverlayHtml('Hidden')}
         </div>
       </div>
     `
@@ -393,8 +394,7 @@ function renderImmediate() {
       const on = isPrivacyMode()
       const btn = e.currentTarget
       sidebarFooter.querySelector('.sidebar-nw-panel .privacy-wrap').classList.toggle('active', on)
-      btn.textContent = on ? '🙈' : '👁️'
-      btn.title = on ? 'Show balances' : 'Hide balances'
+      syncPrivacyButton(btn, on)
     }
     tabbar.appendChild(sidebarFooter)
   }

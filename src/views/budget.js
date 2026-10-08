@@ -52,7 +52,7 @@ export function renderBudget(container, opts) {
   container.innerHTML = `
     <div class="top-bar"><h1>Budget & Limits</h1></div>
 
-    <h2>Monthly Budget Limits</h2>
+    <h2>Monthly budget limits</h2>
     <div class="budget-overview-grid">
       <div class="card budget-chart-card">
         <div class="chart-box chart-box-donut"><canvas id="budgetChart"></canvas></div>
@@ -62,8 +62,8 @@ export function renderBudget(container, opts) {
         </div>
         ${avgIncome !== null ? `<div class="budget-income-compare" id="budgetIncomeCompare"></div>` : `<div class="budget-income-compare">Log some income transactions to compare this against your average salary.</div>`}
         <div style="display:flex;gap:10px;margin-top:14px">
-          <button class="btn" id="saveBudgets">Save Budgets</button>
-          <button class="btn secondary" id="loadSuggested">↺ Load Suggested</button>
+          <button class="btn" id="saveBudgets">Save budgets</button>
+          <button class="btn secondary" id="loadSuggested">Load suggested</button>
         </div>
         <div style="font-size:12px;color:var(--text2);margin-top:10px">Fills the fields from your average spend per category over the last 3 months — review before saving.</div>
       </div>
@@ -84,10 +84,10 @@ export function renderBudget(container, opts) {
       </div>
     </div>
 
-    <h2>Budget Alerts</h2>
+    <h2>Budget alerts</h2>
     <div class="card" style="margin-bottom:16px">
       <div style="font-size:13px;color:var(--text2);margin-bottom:12px">Get a push notification when a budget category crosses 90% or 100% for the month.</div>
-      <button class="btn secondary" id="enableAlertsBtn">Enable Budget Alerts</button>
+      <button class="btn secondary" id="enableAlertsBtn">Enable budget alerts</button>
     </div>
   `
 
@@ -143,14 +143,14 @@ export function renderBudget(container, opts) {
   updateTotal()
 
   container.querySelector('#loadSuggested').onclick = async () => {
-    const ok = await confirmDialog('Fill budget fields from your last 3 months of spending? This overwrites what\'s currently typed here — nothing saves until you click Save Budgets.', 'Load')
+    const ok = await confirmDialog('Fill budget fields from your last 3 months of spending? This overwrites what\'s currently typed here — nothing saves until you click Save budgets.', 'Load')
     if (!ok) return
     container.querySelectorAll('.budgetInput').forEach(input => {
       const suggested = suggestedLimits[input.dataset.cat]
       if (suggested !== undefined) input.value = suggested
     })
     updateTotal()
-    toast('Loaded — review and Save Budgets when ready')
+    toast('Loaded — review and Save budgets when ready')
   }
 
   container.querySelector('#saveBudgets').onclick = async () => {
@@ -172,7 +172,7 @@ export function renderBudget(container, opts) {
       toast(e.message || 'Failed to save budgets')
     } finally {
       btn.disabled = false
-      btn.textContent = 'Save Budgets'
+      btn.textContent = 'Save budgets'
     }
   }
 

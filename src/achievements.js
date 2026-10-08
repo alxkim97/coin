@@ -65,30 +65,30 @@ export function getAchievementDefs(txns, budgets, recurring) {
   const activeRecurring = (recurring || []).filter(r => r.active).length
 
   return [
-    { icon: '🏁', name: 'First Log', desc: 'Log your first transaction', u: totalDays >= 1 },
-    { icon: '📝', name: '10 Days', desc: 'Log on 10 different days', u: totalDays >= 10, prog: `${Math.min(totalDays, 10)}/10` },
-    { icon: '📅', name: '30 Days', desc: 'Log on 30 different days', u: totalDays >= 30, prog: `${Math.min(totalDays, 30)}/30` },
-    { icon: '💯', name: 'Century', desc: 'Log on 100 different days', u: totalDays >= 100, prog: `${Math.min(totalDays, 100)}/100` },
-    { icon: '💎', name: 'Elite 200', desc: 'Log on 200 different days', u: totalDays >= 200, prog: `${Math.min(totalDays, 200)}/200` },
+    { icon: 'flag', name: 'First Log', desc: 'Log your first transaction', u: totalDays >= 1 },
+    { icon: 'pen', name: '10 Days', desc: 'Log on 10 different days', u: totalDays >= 10, prog: `${Math.min(totalDays, 10)}/10` },
+    { icon: 'calendar', name: '30 Days', desc: 'Log on 30 different days', u: totalDays >= 30, prog: `${Math.min(totalDays, 30)}/30` },
+    { icon: 'star', name: 'Century', desc: 'Log on 100 different days', u: totalDays >= 100, prog: `${Math.min(totalDays, 100)}/100` },
+    { icon: 'award', name: 'Elite 200', desc: 'Log on 200 different days', u: totalDays >= 200, prog: `${Math.min(totalDays, 200)}/200` },
 
-    { icon: '⚡', name: '3-Day Streak', desc: 'Log 3 days in a row', u: bestStreak >= 3 },
-    { icon: '🔥', name: 'Week Warrior', desc: 'Log 7 days in a row', u: bestStreak >= 7, prog: `${Math.min(bestStreak, 7)}/7` },
-    { icon: '🌟', name: 'Fortnight', desc: 'Log 14 days in a row', u: bestStreak >= 14, prog: `${Math.min(bestStreak, 14)}/14` },
-    { icon: '👑', name: 'Month Master', desc: 'Log 30 days in a row', u: bestStreak >= 30, prog: `${Math.min(bestStreak, 30)}/30` },
-    { icon: '🏔️', name: '50-Day Streak', desc: 'Log 50 days in a row', u: bestStreak >= 50, prog: `${Math.min(bestStreak, 50)}/50` },
+    { icon: 'zap', name: '3-Day Streak', desc: 'Log 3 days in a row', u: bestStreak >= 3 },
+    { icon: 'flame', name: 'Week Warrior', desc: 'Log 7 days in a row', u: bestStreak >= 7, prog: `${Math.min(bestStreak, 7)}/7` },
+    { icon: 'star', name: 'Fortnight', desc: 'Log 14 days in a row', u: bestStreak >= 14, prog: `${Math.min(bestStreak, 14)}/14` },
+    { icon: 'award', name: 'Month Master', desc: 'Log 30 days in a row', u: bestStreak >= 30, prog: `${Math.min(bestStreak, 30)}/30` },
+    { icon: 'mountain', name: '50-Day Streak', desc: 'Log 50 days in a row', u: bestStreak >= 50, prog: `${Math.min(bestStreak, 50)}/50` },
 
-    { icon: '🧾', name: '100 Entries', desc: 'Log 100 transactions total', u: totalEntries >= 100, prog: `${Math.min(totalEntries, 100)}/100` },
-    { icon: '📚', name: '500 Entries', desc: 'Log 500 transactions total', u: totalEntries >= 500, prog: `${Math.min(totalEntries, 500)}/500` },
-    { icon: '🗄️', name: '1K Entries', desc: 'Log 1,000 transactions total', u: totalEntries >= 1000, prog: `${Math.min(totalEntries, 1000)}/1000` },
+    { icon: 'receipt', name: '100 Entries', desc: 'Log 100 transactions total', u: totalEntries >= 100, prog: `${Math.min(totalEntries, 100)}/100` },
+    { icon: 'book', name: '500 Entries', desc: 'Log 500 transactions total', u: totalEntries >= 500, prog: `${Math.min(totalEntries, 500)}/500` },
+    { icon: 'archive', name: '1K Entries', desc: 'Log 1,000 transactions total', u: totalEntries >= 1000, prog: `${Math.min(totalEntries, 1000)}/1000` },
 
-    { icon: '⚖️', name: 'On Budget', desc: 'Stay under your total budget for a full month', u: budgetStreak >= 1 },
-    { icon: '🛡️', name: 'Budget Pro', desc: 'Stay under budget 3 months in a row', u: budgetStreak >= 3, prog: `${Math.min(budgetStreak, 3)}/3` },
-    { icon: '🏆', name: 'Budget Master', desc: 'Stay under budget 6 months in a row', u: budgetStreak >= 6, prog: `${Math.min(budgetStreak, 6)}/6` },
+    { icon: 'checkCircle', name: 'On Budget', desc: 'Stay under your total budget for a full month', u: budgetStreak >= 1 },
+    { icon: 'shield', name: 'Budget Pro', desc: 'Stay under budget 3 months in a row', u: budgetStreak >= 3, prog: `${Math.min(budgetStreak, 3)}/3` },
+    { icon: 'award', name: 'Budget Master', desc: 'Stay under budget 6 months in a row', u: budgetStreak >= 6, prog: `${Math.min(budgetStreak, 6)}/6` },
 
-    { icon: '🗂️', name: 'Well-Rounded', desc: 'Log expenses in 5 different categories', u: uniqueCategories >= 5, prog: `${Math.min(uniqueCategories, 5)}/5` },
-    { icon: '🌈', name: 'Full Spectrum', desc: 'Log expenses in 10 different categories', u: uniqueCategories >= 10, prog: `${Math.min(uniqueCategories, 10)}/10` },
+    { icon: 'layers', name: 'Well-Rounded', desc: 'Log expenses in 5 different categories', u: uniqueCategories >= 5, prog: `${Math.min(uniqueCategories, 5)}/5` },
+    { icon: 'pie', name: 'Full Spectrum', desc: 'Log expenses in 10 different categories', u: uniqueCategories >= 10, prog: `${Math.min(uniqueCategories, 10)}/10` },
 
-    { icon: '🔁', name: 'On Repeat', desc: 'Set up your first repeat purchase', u: activeRecurring >= 1 },
-    { icon: '⚙️', name: 'Automated', desc: 'Have 3 active repeat purchases', u: activeRecurring >= 3, prog: `${Math.min(activeRecurring, 3)}/3` },
+    { icon: 'repeat', name: 'On Repeat', desc: 'Set up your first repeat purchase', u: activeRecurring >= 1 },
+    { icon: 'settings', name: 'Automated', desc: 'Have 3 active repeat purchases', u: activeRecurring >= 3, prog: `${Math.min(activeRecurring, 3)}/3` },
   ]
 }

@@ -29,11 +29,12 @@ export const BUDGET_TYPE_ORDER = ['Fixed Essential', 'Variable Essential', 'Inve
 
 export const FREQUENCIES = ['daily', 'weekly', 'monthly', 'quarterly', 'annually']
 
+// Icon names from icons.js (rendered via categoryIcon()), not emoji.
 export const CATEGORY_ICONS = {
-  Rent: '🏠', Insurance: '🛡️', Internet: '📶', 'Bank/Finance': '🏦',
-  Food: '🍜', Groceries: '🛒', Transport: '🚗', Health: '💊', Utilities: '💡',
-  Investment: '📈', Shopping: '🛍️', Social: '🎉', Travel: '✈️', Education: '📚', Other: '📦',
-  Salary: '💰', Reimbursement: '↩️', Bonus: '🎁', Overtime: '⏱️', 'Investment Returns': '📊',
+  Rent: 'home', Insurance: 'shield', Internet: 'wifi', 'Bank/Finance': 'bank',
+  Food: 'food', Groceries: 'cart', Transport: 'car', Health: 'heart', Utilities: 'zap',
+  Investment: 'trendingUp', Shopping: 'bag', Social: 'users', Travel: 'map', Education: 'book', Other: 'box',
+  Salary: 'briefcase', Reimbursement: 'undo', Bonus: 'gift', Overtime: 'clock', 'Investment Returns': 'pie',
 }
 
 export function categoryBudgetType(name) {

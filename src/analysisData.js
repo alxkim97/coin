@@ -269,9 +269,9 @@ export function computeProjection(txns, networth, months = 12) {
   const avgInvest = investSum / 3
   const avgNet = avgIncome - avgExpense
 
-  let phase = 'Saving', phaseIcon = '💰'
-  if (avgNet <= 0) { phase = 'Tight Month'; phaseIcon = '⚠️' }
-  else if (avgInvest > avgNet * 0.3) { phase = 'Investing'; phaseIcon = '📈' }
+  let phase = 'Saving', phaseIcon = 'wallet'
+  if (avgNet <= 0) { phase = 'Tight month'; phaseIcon = 'alert' }
+  else if (avgInvest > avgNet * 0.3) { phase = 'Investing'; phaseIcon = 'trendingUp' }
 
   const timeline = netWorthTimeline(networth)
   const latestPoint = timeline[timeline.length - 1]
@@ -377,13 +377,13 @@ export function computePersonalRecords(txns, asOf = new Date()) {
   }
 
   const records = []
-  if (bestIncomeDay) records.push({ icon: '🏆', label: 'Biggest Income Day', value: formatMoney(bestIncomeDay.v), date: bestIncomeDay.d })
-  if (bestSpendDay) records.push({ icon: '💸', label: 'Biggest Spend Day', value: formatMoney(bestSpendDay.v), date: bestSpendDay.d })
-  if (biggestPurchase) records.push({ icon: '🛍️', label: 'Biggest Single Purchase', value: `${formatMoney(biggestPurchase.amount)} · ${biggestPurchase.label}`, date: biggestPurchase.date })
-  if (longest > 0) records.push({ icon: '🧘', label: 'Longest No-Spend Streak', value: `${longest} day${longest === 1 ? '' : 's'}`, date: longestEnd })
+  if (bestIncomeDay) records.push({ icon: 'trendingUp', label: 'Biggest income day', value: formatMoney(bestIncomeDay.v), date: bestIncomeDay.d })
+  if (bestSpendDay) records.push({ icon: 'trendingDown', label: 'Biggest spend day', value: formatMoney(bestSpendDay.v), date: bestSpendDay.d })
+  if (biggestPurchase) records.push({ icon: 'bag', label: 'Biggest single purchase', value: `${formatMoney(biggestPurchase.amount)} · ${biggestPurchase.label}`, date: biggestPurchase.date })
+  if (longest > 0) records.push({ icon: 'calendar', label: 'Longest no-spend streak', value: `${longest} day${longest === 1 ? '' : 's'}`, date: longestEnd })
   if (bestMonth) {
     const [y, m] = bestMonth.key.split('-').map(Number)
-    records.push({ icon: '📈', label: 'Best Savings Month', value: formatMoney(bestMonth.net), dateLabel: new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) })
+    records.push({ icon: 'award', label: 'Best savings month', value: formatMoney(bestMonth.net), dateLabel: new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) })
   }
   return records
 }

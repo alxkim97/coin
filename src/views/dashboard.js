@@ -1,5 +1,5 @@
 import { formatMoney, rangeLabel, rangeWindow, escapeHtml, effectiveDate, formatDateDMY, todayISO, toast } from '../helpers.js'
-import { BUDGET_TYPE_ORDER, EXPENSE_CATEGORIES, CATEGORY_ICONS, categoryBudgetType } from '../categories.js'
+import { BUDGET_TYPE_ORDER, EXPENSE_CATEGORIES, categoryBudgetType } from '../categories.js'
 import { getOrder, setOrder, getCollapsed, toggleCollapsed } from '../dashboardLayout.js'
 import { isDesktopView } from '../platform.js'
 import { computeCurrentLoggingStreak, computeBudgetStreak } from '../achievements.js'
@@ -9,6 +9,7 @@ import { netWorthTimeline, goalProgress } from '../analysisData.js'
 import { billsDue } from '../recurringReminders.js'
 import { openMarkPaidDialog } from '../markPaidDialog.js'
 import { addTransaction, deleteSuggestion } from '../supabase.js'
+import { icon, categoryIcon } from '../icons.js'
 
 const RANGES = [1, 3, 6, 12]
 
@@ -45,8 +46,8 @@ export function renderDashboard(container, opts) {
 
   const widgets = {
     budget: {
-      title: `Budget vs Actual${range > 1 ? ` (×${range} mo.)` : ''}`,
-      body: activeBudgets.length === 0 ? '<div class="empty-state">No budgets set yet. Add limits in Settings.</div>' : activeBudgets.map(b => {
+      title: `Budget vs actual${range > 1 ? ` (×${range} mo.)` : ''}`,
+      body: activeBudgets.length === 0 ? '<div class="empty-state">No budgets set yet. Add limits in the Budget tab.</div>' : activeBudgets.map(b => {
         const limit = b.monthly_limit * range
         const spent = spentByCategory[b.category] || 0
         const pct = Math.min(100, (spent / limit) * 100)
@@ -63,7 +64,7 @@ export function renderDashboard(container, opts) {
       }).join(''),
     },
     category: {
-      title: 'By Category',
+      title: 'By category',
       body: Object.keys(spentByCategory).length === 0 ? '<div class="empty-state">No expenses in this period.</div>' :
         Object.entries(spentByCategory).sort((a, b) => b[1] - a[1]).map(([cat, amt]) => `
           <div class="budget-row">
@@ -76,7 +77,7 @@ export function renderDashboard(container, opts) {
         `).join(''),
     },
     vendors: {
-      title: 'Top Vendors',
+      title: 'Top vendors',
       body: topVendors.length === 0 ? '<div class="empty-state">No vendor/note data in this period.</div>' :
         topVendors.map(([name, d], i) => `
           <div class="vendor-row">
@@ -92,11 +93,11 @@ export function renderDashboard(container, opts) {
       body: renderStreaksBody(txns, budgets),
     },
     networth: {
-      title: 'Net Worth',
+      title: 'Net worth',
       body: renderNetWorthWidgetBody(networth),
     },
     bills: {
-      title: 'Bills Due',
+      title: 'Bills due',
       body: renderBillsDueWidgetBody(recurring),
     },
     suggestions: {
@@ -118,9 +119,9 @@ export function renderDashboard(container, opts) {
       ${RANGES.map(r => `<button data-range="${r}" class="${r === range ? 'active' : ''}">${r === 1 ? '1M' : r + 'M'}</button>`).join('')}
     </div>
     <div class="month-nav">
-      <button id="prevMonth">‹</button>
+      <button id="prevMonth" aria-label="Previous period">${icon('chevronLeft')}</button>
       <div class="month-label">${rangeLabel(year, month, range)}</div>
-      <button id="nextMonth">›</button>
+      <button id="nextMonth" aria-label="Next period">${icon('chevronRight')}</button>
     </div>
 
     <div class="card">
@@ -133,9 +134,9 @@ export function renderDashboard(container, opts) {
           <div class="label">Expense</div>
           <div class="value expense">${formatMoney(expense)}</div>
         </div>
-        <div class="summary-tile">
+        <div class="summary-tile summary-tile-net">
           <div class="label">Net</div>
-          <div class="value" style="color:${net >= 0 ? 'var(--green)' : 'var(--red)'}">${formatMoney(net)}</div>
+          <div class="value ${net >= 0 ? 'income' : 'expense'}">${formatMoney(net)}</div>
         </div>
       </div>
     </div>
@@ -220,33 +221,22 @@ export function renderDashboard(container, opts) {
   })
 }
 
-function loggingStreakIcon(days) {
-  if (days >= 30) return '👑'
-  if (days >= 7) return '🔥'
-  if (days >= 1) return '⚡'
-  return '🌱'
-}
-
-function budgetStreakIcon(months) {
-  if (months >= 3) return '🏆'
-  if (months >= 1) return '🛡️'
-  return '⚖️'
-}
-
 function renderStreaksBody(txns, budgets) {
   const loggingStreak = computeCurrentLoggingStreak(txns)
   const budgetStreak = computeBudgetStreak(txns, budgets)
+  // a streak at 0 shows its icon muted rather than swapping to a different
+  // "empty" icon — the tier now reads from the number itself, not the glyph
   return `
     <div class="streak-row">
       <div class="streak-item">
-        <div class="streak-icon">${loggingStreakIcon(loggingStreak)}</div>
+        <div class="streak-icon${loggingStreak ? '' : ' idle'}">${icon('flame', 24)}</div>
         <div class="streak-value">${loggingStreak}</div>
-        <div class="streak-label">Day${loggingStreak === 1 ? '' : 's'} Logged in a Row</div>
+        <div class="streak-label">Day${loggingStreak === 1 ? '' : 's'} logged in a row</div>
       </div>
       <div class="streak-item">
-        <div class="streak-icon">${budgetStreakIcon(budgetStreak)}</div>
+        <div class="streak-icon${budgetStreak ? '' : ' idle'}">${icon(budgetStreak >= 3 ? 'award' : 'shield', 24)}</div>
         <div class="streak-value">${budgetStreak}</div>
-        <div class="streak-label">Month${budgetStreak === 1 ? '' : 's'} Under Budget</div>
+        <div class="streak-label">Month${budgetStreak === 1 ? '' : 's'} under budget</div>
       </div>
     </div>
   `
@@ -260,10 +250,10 @@ function renderNetWorthWidgetBody(networth) {
   if (!latest) {
     return `
       <div class="networth-widget-body">
-        <div class="networth-widget-icon">💰</div>
+        <div class="networth-widget-icon">${icon('wallet', 22)}</div>
         <div class="networth-widget-main">
-          <div class="networth-widget-label">No check-ins yet <span class="networth-widget-tap">· tap to log</span></div>
           <div class="networth-widget-val">—</div>
+          <div class="networth-widget-delta">No check-ins yet — tap to log one</div>
         </div>
       </div>
     `
@@ -280,9 +270,8 @@ function renderNetWorthWidgetBody(networth) {
 
   return `
     <div class="networth-widget-body">
-      <div class="networth-widget-icon">💰</div>
+      <div class="networth-widget-icon">${icon('wallet', 22)}</div>
       <div class="networth-widget-main">
-        <div class="networth-widget-label">Net Worth <span class="networth-widget-tap">· tap to log</span></div>
         <div class="networth-widget-val">${formatMoney(total)}</div>
         <div class="networth-widget-delta">${deltaHtml}</div>
       </div>
@@ -294,7 +283,7 @@ function renderSuggestionsWidgetBody(suggestions) {
   if (!suggestions || !suggestions.length) return '<div class="empty-state">No suggestions right now.</div>'
   return suggestions.map(s => `
     <div class="suggestion-row">
-      <div class="suggestion-icon">${CATEGORY_ICONS[s.category] || '💵'}</div>
+      <div class="suggestion-icon">${categoryIcon(s.category)}</div>
       <div class="suggestion-main">
         <div class="suggestion-top">
           <span class="suggestion-cat">${escapeHtml(s.category)}${s.subcategory ? ' · ' + escapeHtml(s.subcategory) : ''}</span>
@@ -304,8 +293,8 @@ function renderSuggestionsWidgetBody(suggestions) {
         ${s.source_note ? `<div class="suggestion-source">${escapeHtml(s.source_note)}</div>` : ''}
       </div>
       <div class="suggestion-actions">
-        <button class="suggestion-decline" data-id="${s.id}" aria-label="Decline">✕</button>
-        <button class="suggestion-accept" data-id="${s.id}" aria-label="Accept">✓</button>
+        <button class="suggestion-decline" data-id="${s.id}" aria-label="Decline">${icon('x', 15)}</button>
+        <button class="suggestion-accept" data-id="${s.id}" aria-label="Accept">${icon('check', 15)}</button>
       </div>
     </div>
   `).join('')
@@ -320,13 +309,13 @@ function renderBillsDueWidgetBody(recurring) {
     const progress = r.installments_total ? ` · ${r.installments_paid || 0} of ${r.installments_total} paid` : ''
     return `
       <div class="bill-row">
-        <div class="bill-icon">${CATEGORY_ICONS[r.category] || '💵'}</div>
+        <div class="bill-icon">${categoryIcon(r.category)}</div>
         <div class="bill-main">
           <div class="bill-name">${escapeHtml(r.subcategory || r.category)}</div>
           <div class="bill-meta ${overdue ? 'overdue' : ''}">${overdue ? 'Overdue' : 'Due'} ${formatDateDMY(r.next_due)}${progress}</div>
         </div>
         <div class="bill-amt">${formatMoney(r.amount)}</div>
-        <button class="btn bill-mark-paid" data-id="${r.id}">Mark Paid</button>
+        <button class="btn bill-mark-paid" data-id="${r.id}">Mark paid</button>
       </div>
     `
   }).join('')
@@ -353,9 +342,9 @@ function widgetRowHtml(id, def, isCollapsed) {
   return `
     <div class="dash-widget" data-widget="${id}">
       <div class="dash-widget-head">
-        <button class="drag-handle" data-widget="${id}" aria-label="Drag to reorder">⠿</button>
+        <button class="drag-handle" data-widget="${id}" aria-label="Drag to reorder">${icon('grip', 15)}</button>
         <h2>${def.title}</h2>
-        <button class="widget-toggle" data-widget="${id}" aria-label="${isCollapsed ? 'Expand' : 'Collapse'} section">${isCollapsed ? '⌄' : '⌃'}</button>
+        <button class="widget-toggle" data-widget="${id}" aria-expanded="${!isCollapsed}">${isCollapsed ? 'Show' : 'Hide'}</button>
       </div>
       ${isCollapsed ? '' : `<div class="card">${def.body}</div>`}
     </div>

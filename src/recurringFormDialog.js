@@ -51,17 +51,17 @@ export function openRecurringForm({ item, onSaved }) {
         ${form.type === 'expense' ? `
           <label class="checkbox-row" style="margin-top:16px">
             <input type="checkbox" id="recIsCreditCard" ${form.is_credit_card ? 'checked' : ''} />
-            <span>💳 Paid via credit card</span>
+            <span>Paid via credit card</span>
           </label>
           <label class="checkbox-row" style="margin-top:8px">
             <input type="checkbox" id="recIsShopee" ${form.is_shopee ? 'checked' : ''} />
-            <span>🛍️ Bought via Shopee</span>
+            <span>Bought via Shopee</span>
           </label>
         ` : ''}
 
         <div class="confirm-actions" style="margin-top:16px">
           <button class="btn secondary" id="recCancel">Cancel</button>
-          <button class="btn" id="recSave">${form.id ? 'Save Changes' : 'Add'}</button>
+          <button class="btn" id="recSave">${form.id ? 'Save changes' : 'Add'}</button>
           ${form.id ? '<button class="btn danger" id="recDelete">Delete</button>' : ''}
         </div>
       </div>
@@ -123,7 +123,7 @@ export function openRecurringForm({ item, onSaved }) {
       } catch (e) {
         toast(e.message || 'Failed to save')
         btn.disabled = false
-        btn.textContent = form.id ? 'Save Changes' : 'Add'
+        btn.textContent = form.id ? 'Save changes' : 'Add'
       }
     }
 

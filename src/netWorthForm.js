@@ -1,10 +1,11 @@
 // Shared between the dashboard's quick-log popup (netWorthQuickLog.js) and
-// the Settings "New Check-in" form — both log the same coin_networth data,
+// the Settings "New check-in" form — both log the same coin_networth data,
 // and used to carry two independently-hand-copied implementations that had
 // already drifted (Settings didn't pre-fill from history and zeroed out any
 // blank field on save, contradicting the quick-log's explicit "blank skips
 // this account, doesn't zero it" behavior). One implementation now backs both.
 import { escapeHtml, formatMoney, evalMoneyExpr } from './helpers.js'
+import { icon } from './icons.js'
 
 // Seeds item rows from each account's latest known value across ALL
 // check-ins — not just whichever check-in happened to be most recent — so
@@ -48,7 +49,7 @@ function itemRowHtml(it, i, total) {
         <option value="insurance" ${it.category === 'insurance' ? 'selected' : ''}>Insurance</option>
       </select>
       <input class="nwItemValue" type="text" inputmode="decimal" placeholder="${it.lastValue != null ? escapeHtml(formatMoney(it.lastValue)) : 'e.g. 500000+3507.34'}" value="${escapeHtml(it.value)}" />
-      <button class="nwItemRemove" type="button" ${total <= 1 ? 'disabled' : ''}>✕</button>
+      <button class="nwItemRemove" type="button" ${total <= 1 ? 'disabled' : ''} aria-label="Remove account">${icon('x', 14)}</button>
     </div>
   `
 }

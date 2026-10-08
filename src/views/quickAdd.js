@@ -1,9 +1,10 @@
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, categoryBudgetType, CATEGORY_ICONS } from '../categories.js'
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, categoryBudgetType } from '../categories.js'
 import { addTransaction, updateTransaction, deleteTransaction, addRecurring, uploadReceipt, getReceiptUrl, deleteReceipt } from '../supabase.js'
 import { todayISO, toast, confirmDialog, formatMoney, escapeHtml, advanceDate, dmyDateFieldHtml, wireDmyDateField, sortByDateDesc } from '../helpers.js'
 import { isDesktopView } from '../platform.js'
 import { recurScheduleHtml, wireRecurSchedule } from '../recurringScheduleFields.js'
 import { openRecurringList } from '../recurringListDialog.js'
+import { icon, categoryIcon } from '../icons.js'
 
 // The transaction's own date can be freely backdated (backfilling an old
 // bill, say). Seeding next_due from a single advanceDate() off that date
@@ -110,7 +111,7 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
         <label>Tags (optional)</label>
         ${tags.length ? `
           <div class="chip-grid" id="tagChips" style="margin-bottom:8px">
-            ${tags.map(t => `<span class="chip active" data-tag="${escapeHtml(t)}">${escapeHtml(t)} ✕</span>`).join('')}
+            ${tags.map(t => `<span class="chip active" data-tag="${escapeHtml(t)}">${escapeHtml(t)} ${icon('x', 12)}</span>`).join('')}
           </div>
         ` : ''}
         <input id="tagInput" type="text" placeholder="Type a tag, press Enter" autocomplete="off" />
@@ -126,24 +127,24 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
         </div>
       ` : `
         <input type="file" accept="image/*" capture="environment" id="receiptInput" style="display:none" />
-        <button type="button" class="btn secondary" id="pickReceiptBtn" style="width:auto">📷 Add Receipt Photo</button>
+        <button type="button" class="btn secondary" id="pickReceiptBtn" style="width:auto">${icon('camera', 16)} Add receipt photo</button>
       `}
 
       ${type === 'expense' ? `
         <label class="checkbox-row" style="margin-top:16px">
           <input type="checkbox" id="isCreditCard" ${isCreditCard ? 'checked' : ''} />
-          <span>💳 Paid via credit card</span>
+          <span>Paid via credit card</span>
         </label>
         <label class="checkbox-row" style="margin-top:8px">
           <input type="checkbox" id="isShopee" ${isShopee ? 'checked' : ''} />
-          <span>🛍️ Bought via Shopee</span>
+          <span>Bought via Shopee</span>
         </label>
       ` : ''}
 
       <div class="card" style="margin-top:16px">
         <label class="checkbox-row" style="margin-top:0">
           <input type="checkbox" id="saveAsRecurring" ${saveAsRecurring ? 'checked' : ''} />
-          <span>Also save as Repeat Purchase</span>
+          <span>Also save as repeat purchase</span>
         </label>
         ${saveAsRecurring ? recurScheduleHtml(recurForm, { showNextDue: false, showInstallmentsPaid: false }) : ''}
         <button type="button" class="link-btn" id="manageRecurringBtn" style="margin-top:12px">Manage repeat purchases</button>
@@ -152,7 +153,7 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
 
     container.innerHTML = `
       <div class="top-bar">
-        <h1>${isEdit ? 'Edit Transaction' : 'Add Transaction'}</h1>
+        <h1>${isEdit ? 'Edit transaction' : 'Add transaction'}</h1>
       </div>
 
       <div class="toggle-row" id="typeToggle">
@@ -165,7 +166,7 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
         <div class="quick-chip-row" id="quickChips">
           ${quicks.map(r => `
             <button type="button" class="quick-chip" data-id="${r.id}">
-              <span class="qc-name">${CATEGORY_ICONS[r.category] || '💵'} ${escapeHtml(r.subcategory || r.category)}</span>
+              <span class="qc-name">${categoryIcon(r.category, 14)} ${escapeHtml(r.subcategory || r.category)}</span>
               <span class="qc-amt">${formatMoney(r.amount)}</span>
             </button>
           `).join('')}
@@ -191,13 +192,13 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
       ${dmyDateFieldHtml('dateInput', date)}
 
       ${mobile ? `
-        <button type="button" class="link-btn" id="moreDetailsBtn" style="margin-top:18px">${showMoreDetails ? '▾ Hide more details' : '▸ More details'}</button>
+        <button type="button" class="link-btn" id="moreDetailsBtn" style="margin-top:18px">${showMoreDetails ? 'Fewer details' : 'More details'}</button>
         <div id="moreDetailsBlock" ${showMoreDetails ? '' : 'hidden'}>${moreDetailsHtml}</div>
       ` : moreDetailsHtml}
 
       <div style="margin-top:22px;display:flex;flex-direction:column;gap:10px">
-        <button class="btn" id="saveBtn">${isEdit ? 'Save Changes' : 'Add Transaction'}</button>
-        ${!isEdit ? '<button class="btn secondary" id="saveAndAddBtn">Save & Add Another</button>' : ''}
+        <button class="btn" id="saveBtn">${isEdit ? 'Save changes' : 'Add transaction'}</button>
+        ${!isEdit ? '<button class="btn secondary" id="saveAndAddBtn">Save & add another</button>' : ''}
         ${isEdit ? '<button class="btn secondary" id="cancelBtn">Cancel</button>' : ''}
         ${isEdit ? '<button class="btn danger" id="deleteBtn">Delete</button>' : ''}
       </div>
@@ -248,7 +249,7 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
       suggBox.classList.add('open')
       suggBox.innerHTML = matches.map(it => `
         <div class="vendor-suggestion" data-sub="${escapeHtml(it.subcategory)}" data-cat="${escapeHtml(it.category)}" data-amt="${it.amount}">
-          <span class="vsg-icon">${CATEGORY_ICONS[it.category] || '💵'}</span>
+          <span class="vsg-icon">${categoryIcon(it.category)}</span>
           <span class="vsg-name">${escapeHtml(it.subcategory)}</span>
           <span class="vsg-cat">${escapeHtml(it.category)}</span>
         </div>
@@ -436,7 +437,7 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
     } catch (e) {
       toast(e.message || 'Failed to save')
       btn.disabled = false
-      btn.textContent = stayOnAdd ? 'Save & Add Another' : (isEdit ? 'Save Changes' : 'Add Transaction')
+      btn.textContent = stayOnAdd ? 'Save & add another' : (isEdit ? 'Save changes' : 'Add transaction')
       if (otherBtn) otherBtn.disabled = false
     }
   }

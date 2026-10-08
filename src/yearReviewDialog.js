@@ -1,6 +1,6 @@
 import { computeYearReview } from './analysisData.js'
 import { formatMoney, formatDateDMY, escapeHtml } from './helpers.js'
-import { CATEGORY_ICONS } from './categories.js'
+import { icon, categoryIcon } from './icons.js'
 
 // Persists across re-opens within the session, same idiom as analysis.js's period.
 let selectedYear = null
@@ -25,7 +25,7 @@ export function openYearReview({ txns }) {
     const review = computeYearReview(txns, selectedYear)
     overlay.innerHTML = `
       <div class="confirm-box modal-box-lg">
-        <div class="nwq-title">Year in Review</div>
+        <div class="nwq-title">Year in review</div>
         ${years.length ? `
           <div class="range-toggle" id="yearToggle" style="margin-top:10px">
             ${years.map(y => `<button data-year="${y}" class="${y === selectedYear ? 'active' : ''}">${y}</button>`).join('')}
@@ -81,22 +81,22 @@ function reviewContentHtml(review) {
       </div>
     </div>
 
-    <h2>Top Categories</h2>
+    <h2>Top categories</h2>
     <div class="card">
       ${review.topCategories.length ? review.topCategories.map(c => `
         <div class="vendor-row">
-          <div class="vendor-rank">${CATEGORY_ICONS[c.category] || '💵'}</div>
+          <div class="vendor-rank">${categoryIcon(c.category)}</div>
           <div class="vendor-name">${escapeHtml(c.category)}</div>
           <div class="vendor-amt">${formatMoney(c.amount)}</div>
         </div>
       `).join('') : '<div class="empty-state">No expenses logged.</div>'}
     </div>
 
-    <h2>Personal Records</h2>
+    <h2>Personal records</h2>
     <div class="card"><div class="record-grid">
       ${review.personalRecords.length ? review.personalRecords.map(r => `
         <div class="record-card">
-          <div class="record-icon">${r.icon}</div>
+          <div class="record-icon">${icon(r.icon, 22)}</div>
           <div class="record-val">${r.value}</div>
           <div class="record-lbl">${r.label}</div>
           <div class="record-date">${r.date ? formatDateDMY(r.date) : (r.dateLabel || '')}</div>

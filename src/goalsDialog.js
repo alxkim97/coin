@@ -116,7 +116,7 @@ export function openGoals({ goals, networth, onGoalsChanged }) {
       } catch (e) {
         toast(e.message || 'Failed to save')
         btn.disabled = false
-        btn.textContent = form.id ? 'Save Changes' : 'Add Goal'
+        btn.textContent = form.id ? 'Save changes' : 'Add goal'
       }
     }
   }
@@ -130,7 +130,7 @@ function goalCardHtml(g, networth) {
   const progress = goalProgress(g, networth)
   const barClass = progress.pct >= 100 ? '' : (progress.pct >= 80 ? 'warn' : '')
   const noteText = progress.pct >= 100
-    ? '🎉 Goal reached'
+    ? 'Goal reached'
     : progress.suggestedMonthly != null
       ? `~${formatMoney(progress.suggestedMonthly)}/mo to reach it by ${formatDateDMY(g.target_date)}`
       : g.target_date ? 'Target date has passed' : 'No target date set'
@@ -184,7 +184,7 @@ function goalFormHtml(form, networth) {
 
       <div class="confirm-actions" style="margin-top:16px">
         <button class="btn secondary" id="goalCancel">Cancel</button>
-        <button class="btn" id="goalSave">${form.id ? 'Save Changes' : 'Add Goal'}</button>
+        <button class="btn" id="goalSave">${form.id ? 'Save changes' : 'Add goal'}</button>
       </div>
     </div>
   `

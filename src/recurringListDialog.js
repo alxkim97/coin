@@ -1,6 +1,6 @@
-import { CATEGORY_ICONS } from './categories.js'
 import { escapeHtml, formatMoney, formatDateDMY, frequencyLabel } from './helpers.js'
 import { openRecurringForm } from './recurringFormDialog.js'
+import { categoryIcon } from './icons.js'
 
 // Same overlay pattern as the other dialogs — reached from the Add page
 // ("Manage Repeat Purchases" link) instead of its own tab/sidebar destination,
@@ -20,11 +20,11 @@ export function openRecurringList({ recurring, onRecurringChanged }) {
   function render() {
     overlay.innerHTML = `
       <div class="confirm-box modal-box-lg">
-        <div class="nwq-title">Repeat Purchases</div>
+        <div class="nwq-title">Repeat purchases</div>
         <div class="nwq-rows">
           ${data.length === 0 ? '<div class="empty-state">No repeat purchases yet — rent, insurance, or anything you log often.</div>' : data.map(r => `
             <div class="recurring-row">
-              <div class="recurring-icon">${CATEGORY_ICONS[r.category] || '💵'}</div>
+              <div class="recurring-icon">${categoryIcon(r.category)}</div>
               <div class="recurring-main">
                 <div class="recurring-name">${escapeHtml(r.category)}${r.subcategory ? ' · ' + escapeHtml(r.subcategory) : ''}</div>
                 <div class="recurring-meta">${

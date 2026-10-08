@@ -6,7 +6,7 @@ export function renderAuth(container, { onSignedIn }) {
   function draw() {
     container.innerHTML = `
       <div class="center-screen">
-        <h1 style="text-align:center;font-size:28px;margin-bottom:4px">🪙 Coin</h1>
+        <h1 style="text-align:center;font-size:28px;margin-bottom:4px">Coin</h1>
         <p style="text-align:center;color:var(--text2);margin-bottom:28px">
           ${mode === 'signin' ? 'Sign in to sync your transactions' : 'Create your account'}
         </p>
@@ -17,7 +17,7 @@ export function renderAuth(container, { onSignedIn }) {
           <input id="authPass" type="password" autocomplete="current-password" placeholder="••••••••" />
           <div class="field-error" id="authErr"></div>
           <div style="margin-top:16px">
-            <button class="btn" id="authSubmit">${mode === 'signin' ? 'Sign In' : 'Create Account'}</button>
+            <button class="btn" id="authSubmit">${mode === 'signin' ? 'Sign in' : 'Create account'}</button>
           </div>
         </div>
         <div style="text-align:center;margin-top:16px">
@@ -60,7 +60,7 @@ export function renderAuth(container, { onSignedIn }) {
       err.style.color = 'var(--red)'
       err.textContent = e.message || 'Something went wrong.'
       btn.disabled = false
-      btn.textContent = mode === 'signin' ? 'Sign In' : 'Create Account'
+      btn.textContent = mode === 'signin' ? 'Sign in' : 'Create account'
     }
   }
 

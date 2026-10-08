@@ -1,14 +1,14 @@
 import { Chart, registerables } from 'chart.js'
 import { dailySpend, categoryBreakdown, monthlyRollup, heatmapData, generateInsights, computeProjection, computePersonalRecords, upcomingBills } from '../analysisData.js'
 import { getAchievementDefs } from '../achievements.js'
-import { CATEGORY_ICONS } from '../categories.js'
 import { formatMoney, localISO, toast, formatDateDMY, escapeHtml } from '../helpers.js'
-import { isPrivacyMode, setPrivacyMode } from '../privacy.js'
+import { isPrivacyMode, setPrivacyMode, syncPrivacyButton, privacyOverlayHtml } from '../privacy.js'
 import { isDesktopView } from '../platform.js'
 import { renderInvestmentDepth, renderNetWorthSummaryCard } from './analysisInvestments.js'
 import { openBalanceForecast } from '../balanceForecastDialog.js'
 import { openInvestmentCalculator } from '../investmentCalculatorDialog.js'
 import { openYearReview } from '../yearReviewDialog.js'
+import { icon, categoryIcon } from '../icons.js'
 
 Chart.register(...registerables)
 
@@ -46,10 +46,10 @@ export function renderAnalysis(container, opts) {
       ${PERIODS.map(p => `<button data-period="${p}" class="${p === period ? 'active' : ''}">${p === 365 ? '1Y' : p + 'D'}</button>`).join('')}
     </div>
 
-    <h2>Spend Trend</h2>
+    <h2>Spend trend</h2>
     <div class="card"><div class="chart-box"><canvas id="trendChart"></canvas></div></div>
 
-    <h2>By Category</h2>
+    <h2>By category</h2>
     <div class="card"><div class="chart-box chart-box-donut"><canvas id="categoryChart"></canvas></div></div>
 
     <h2>Income vs Expense (12 months)</h2>
@@ -58,36 +58,36 @@ export function renderAnalysis(container, opts) {
     <h2>Insights</h2>
     <div class="card" id="insightsCard"></div>
 
-    <h2>Activity Heatmap</h2>
+    <h2>Activity heatmap</h2>
     <div class="card"><div id="heatmap"></div></div>
 
     <div id="investmentSection"></div>
 
-    <h2>Balance Forecast</h2>
+    <h2>Balance forecast</h2>
     <div class="privacy-wrap${privacyOn ? ' active' : ''}" style="margin-bottom:16px">
       <div class="card">
         <div style="font-size:13px;color:var(--text2);margin-bottom:12px">${forecastSummaryText}</div>
-        <button class="btn secondary" id="balanceForecastBtn" style="width:auto">View Full Forecast</button>
+        <button class="btn secondary" id="balanceForecastBtn" style="width:auto">View full forecast</button>
       </div>
-      <div class="privacy-overlay">🔒 Balances hidden</div>
+      ${privacyOverlayHtml()}
     </div>
 
-    <h2>Investment Calculator</h2>
+    <h2>Investment calculator</h2>
     <div class="card" style="margin-bottom:16px">
       <div style="font-size:13px;color:var(--text2);margin-bottom:12px">Project how your GLD/index-fund contributions could grow over time.</div>
       <button class="btn secondary" id="investmentCalcBtn" style="width:auto">Open Calculator</button>
     </div>
 
-    <h2>Cashflow Forecast (Next 60 Days)</h2>
+    <h2>Cashflow forecast (next 60 days)</h2>
     <div class="card"><div id="cashflowForecast"></div></div>
 
-    <h2>Personal Records</h2>
+    <h2>Personal records</h2>
     <div class="card"><div class="record-grid" id="personalRecords"></div></div>
 
     <h2>Year in Review</h2>
     <div class="card" style="margin-bottom:16px">
       <div style="font-size:13px;color:var(--text2);margin-bottom:12px">A recap of any year you've logged — income, spending, top categories, and personal records.</div>
-      <button class="btn secondary" id="yearReviewBtn" style="width:auto">View Year in Review</button>
+      <button class="btn secondary" id="yearReviewBtn" style="width:auto">View year in review</button>
     </div>
 
     <div class="top-bar" style="margin-top:6px"><h2 style="margin:0">Achievements</h2><span class="achievement-count" id="achievementCount"></span></div>
@@ -131,8 +131,7 @@ export function renderAnalysis(container, opts) {
       const on = isPrivacyMode()
       container.querySelectorAll('.privacy-wrap').forEach(w => w.classList.toggle('active', on))
       container.querySelectorAll('.privacy-toggle-btn').forEach(b => {
-        b.textContent = on ? '🙈' : '👁️'
-        b.title = on ? 'Show balances' : 'Hide balances'
+        syncPrivacyButton(b, on)
       })
     }
   })
@@ -147,7 +146,7 @@ function renderPersonalRecords(container, txns) {
   }
   el.innerHTML = records.map(r => `
     <div class="record-card">
-      <div class="record-icon">${r.icon}</div>
+      <div class="record-icon">${icon(r.icon, 22)}</div>
       <div class="record-val">${r.value}</div>
       <div class="record-lbl">${r.label}</div>
       <div class="record-date">${r.date ? formatDateDMY(r.date) : (r.dateLabel || '')}</div>
@@ -167,7 +166,7 @@ function renderCashflowForecast(container, recurring) {
     <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Bills only, not a full balance projection — ${formatMoney(total)} total due over the next 60 days.</div>
     ${bills.map(b => `
       <div class="bill-row">
-        <div class="bill-icon">${CATEGORY_ICONS[b.category] || '💵'}</div>
+        <div class="bill-icon">${categoryIcon(b.category)}</div>
         <div class="bill-main">
           <div class="bill-name">${escapeHtml(b.name)}</div>
           <div class="bill-meta">${formatDateDMY(b.date)}</div>
@@ -186,7 +185,7 @@ function renderAchievements(container, txns, budgets, recurring) {
     for (const name of nowUnlocked) {
       if (!prevUnlocked.has(name)) {
         const a = defs.find(d => d.name === name)
-        toast(`🎉 Achievement unlocked: ${a.icon} ${a.name}`)
+        toast(`Achievement unlocked: ${a.name}`)
       }
     }
   }
@@ -197,7 +196,7 @@ function renderAchievements(container, txns, budgets, recurring) {
   container.querySelector('#achievementCount').textContent = `${unlockedCount} / ${defs.length} unlocked`
   container.querySelector('#achievementGrid').innerHTML = sorted.map(a => `
     <div class="achievement-card ${a.u ? 'unlocked' : 'locked'}" title="${a.desc}">
-      <div class="achievement-icon">${a.icon}</div>
+      <div class="achievement-icon">${icon(a.icon, 22)}</div>
       <div class="achievement-name">${a.name}</div>
       <div class="achievement-desc">${a.desc}</div>
       ${!a.u && a.prog ? `<div class="achievement-progress">${a.prog}</div>` : ''}
@@ -328,7 +327,7 @@ function renderRollupChart(container, txns) {
 function renderInsights(container, txns) {
   const insights = generateInsights(txns)
   container.querySelector('#insightsCard').innerHTML = insights.length
-    ? insights.map(text => `<div class="insight-row">💡 ${text}</div>`).join('')
+    ? insights.map(text => `<div class="insight-row">${icon('bulb', 16)}<span>${text}</span></div>`).join('')
     : '<div class="empty-state">Not enough data yet for insights — keep logging.</div>'
 }
 
