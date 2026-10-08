@@ -1,6 +1,9 @@
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, categoryBudgetType, CATEGORY_ICONS, FREQUENCIES } from '../categories.js'
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, categoryBudgetType, CATEGORY_ICONS } from '../categories.js'
 import { addTransaction, updateTransaction, deleteTransaction, addRecurring, uploadReceipt, getReceiptUrl, deleteReceipt } from '../supabase.js'
-import { todayISO, toast, confirmDialog, formatMoney, escapeHtml, advanceDate, frequencyLabel, dmyDateFieldHtml, wireDmyDateField, sortByDateDesc } from '../helpers.js'
+import { todayISO, toast, confirmDialog, formatMoney, escapeHtml, advanceDate, dmyDateFieldHtml, wireDmyDateField, sortByDateDesc } from '../helpers.js'
+import { isDesktopView } from '../platform.js'
+import { recurScheduleHtml, wireRecurSchedule } from '../recurringScheduleFields.js'
+import { openRecurringList } from '../recurringListDialog.js'
 
 // The transaction's own date can be freely backdated (backfilling an old
 // bill, say). Seeding next_due from a single advanceDate() off that date
@@ -35,7 +38,7 @@ function buildItemIndex(txns, recurring) {
   return [...map.values()]
 }
 
-export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns }) {
+export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns, onRecurringChanged }) {
   const isEdit = !!editingTxn
   let type = editingTxn?.type || 'expense'
   let category = editingTxn?.category || null
@@ -44,9 +47,12 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
   let subcategory = editingTxn?.subcategory || ''
   let notes = editingTxn?.notes || ''
   let saveAsRecurring = false
-  let recurMode = 'auto'
-  let recurFrequency = 'monthly'
-  let recurInstallmentsTotal = ''
+  // shape matches coin_recurring's own field names (and recurringScheduleFields.js's
+  // expected state shape) so it can be handed straight to the shared component —
+  // next_due/installments_paid are unused here (showNextDue/showInstallmentsPaid
+  // are both false for this card; next_due is computed from the transaction's
+  // own date on save instead, installments_paid always starts at 1 for Remind)
+  let recurForm = { mode: 'auto', frequency: 'monthly', next_due: null, installments_total: null, installments_paid: 0 }
   let isCreditCard = editingTxn?.is_credit_card || false
   let isShopee = editingTxn?.is_shopee || false
   let tags = editingTxn?.tags || []
@@ -54,6 +60,12 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
   // as it was before this existed, only editing an already-tagged entry
   // (or tapping "+ Add tags") expands it
   let showTagInput = tags.length > 0
+  // Mobile-only disclosure (desktop always shows these fields inline — see
+  // draw()). Collapsed by default to keep the fast-entry path (type, amount,
+  // category, vendor, date) front and center, but auto-expanded when editing
+  // an entry that already has notes/receipt/tags, so editing never hides
+  // data the user is actively trying to change behind an extra tap.
+  let showMoreDetails = !!(editingTxn?.notes || editingTxn?.receipt_path || tags.length)
   let receiptFile = null // a freshly-picked File, not yet uploaded — upload happens on save, not on pick
   let receiptPreviewUrl = null // object URL (fresh pick) or signed URL (existing receipt_path), for the <img>
   let receiptPath = editingTxn?.receipt_path || null
@@ -81,46 +93,16 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
   function draw() {
     const categoryList = cats()
     const quicks = isEdit ? [] : quickItems()
-    container.innerHTML = `
-      <div class="top-bar">
-        <h1>${isEdit ? 'Edit Transaction' : 'Add Transaction'}</h1>
-      </div>
+    const mobile = !isDesktopView()
 
-      <div class="toggle-row" id="typeToggle">
-        <button data-type="expense" class="${type === 'expense' ? 'active expense' : ''}">Expense</button>
-        <button data-type="income" class="${type === 'income' ? 'active income' : ''}">Income</button>
-      </div>
-
-      ${quicks.length ? `
-        <label>Frequently Used</label>
-        <div class="quick-chip-row" id="quickChips">
-          ${quicks.map(r => `
-            <button type="button" class="quick-chip" data-id="${r.id}">
-              <span class="qc-name">${CATEGORY_ICONS[r.category] || '💵'} ${escapeHtml(r.subcategory || r.category)}</span>
-              <span class="qc-amt">${formatMoney(r.amount)}</span>
-            </button>
-          `).join('')}
-        </div>
-      ` : ''}
-
-      <div class="card" style="margin-top:16px">
-        <input class="amount-input" id="amountInput" type="number" inputmode="decimal" placeholder="0" value="${amount}" />
-      </div>
-
-      <label>Category</label>
-      <div class="chip-grid" id="catGrid">
-        ${categoryList.map(c => `<div class="chip ${c === category ? 'active' : ''}" data-cat="${c}">${c}</div>`).join('')}
-      </div>
-
-      <label>Vendor / Note</label>
-      <div class="vendor-field">
-        <input id="subInput" type="text" placeholder="Type to search past vendors, e.g. GLD" value="${subcategory.replace(/"/g, '&quot;')}" autocomplete="off" />
-        <div class="vendor-suggestions" id="vendorSuggestions"></div>
-      </div>
-
-      <label>Date</label>
-      ${dmyDateFieldHtml('dateInput', date)}
-
+    // Notes/Tags/Receipt/card-source/Repeat-Purchase — the occasional fields,
+    // as opposed to the type/amount/category/vendor/date fast-entry path
+    // above. On desktop these render inline, unconditionally, exactly as
+    // before this block was extracted. On mobile they're gated behind the
+    // "More details" disclosure below instead (see the mobile ? ... branch
+    // further down) — same markup either way, just wrapped differently, so
+    // none of the event wiring beneath this function needs to change.
+    const moreDetailsHtml = `
       <label>Notes (optional)</label>
       <textarea id="notesInput" rows="2" placeholder="Anything else...">${notes}</textarea>
 
@@ -163,25 +145,55 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
           <input type="checkbox" id="saveAsRecurring" ${saveAsRecurring ? 'checked' : ''} />
           <span>Also save as Repeat Purchase</span>
         </label>
-        ${saveAsRecurring ? `
-          <div class="toggle-row" id="recurModeToggle" style="margin-top:12px">
-            <button type="button" data-mode="auto" class="${recurMode === 'auto' ? 'active' : ''}">Automatic</button>
-            <button type="button" data-mode="remind" class="${recurMode === 'remind' ? 'active' : ''}">Remind</button>
-            <button type="button" data-mode="quick" class="${recurMode === 'quick' ? 'active' : ''}">Quick Pick</button>
-          </div>
-          ${recurMode === 'auto' || recurMode === 'remind' ? `
-            <label>Frequency</label>
-            <select id="recurFrequency">
-              ${FREQUENCIES.map(f => `<option value="${f}" ${f === recurFrequency ? 'selected' : ''}>${frequencyLabel(f)}</option>`).join('')}
-            </select>
-            ${recurMode === 'remind' ? `
-              <label>Number of Payments (optional)</label>
-              <input id="recurInstallmentsTotal" type="number" inputmode="numeric" min="1" placeholder="Leave blank if ongoing, e.g. rent" value="${recurInstallmentsTotal}" />
-              <div style="font-size:12px;color:var(--text2);margin-top:8px">Shows under Bills Due on the Dashboard when due — you confirm and mark it paid, nothing posts on its own. Set a payment count for a fixed-term installment that should stop itself.</div>
-            ` : ''}
-          ` : `<div style="font-size:12px;color:var(--text2);margin-top:8px">Shows up as a one-tap chip under Frequently Used — you log it manually each time.</div>`}
-        ` : ''}
+        ${saveAsRecurring ? recurScheduleHtml(recurForm, { showNextDue: false, showInstallmentsPaid: false }) : ''}
+        <button type="button" class="link-btn" id="manageRecurringBtn" style="margin-top:12px">Manage repeat purchases</button>
       </div>
+    `
+
+    container.innerHTML = `
+      <div class="top-bar">
+        <h1>${isEdit ? 'Edit Transaction' : 'Add Transaction'}</h1>
+      </div>
+
+      <div class="toggle-row" id="typeToggle">
+        <button data-type="expense" class="${type === 'expense' ? 'active expense' : ''}">Expense</button>
+        <button data-type="income" class="${type === 'income' ? 'active income' : ''}">Income</button>
+      </div>
+
+      ${quicks.length ? `
+        <label>Frequently Used</label>
+        <div class="quick-chip-row" id="quickChips">
+          ${quicks.map(r => `
+            <button type="button" class="quick-chip" data-id="${r.id}">
+              <span class="qc-name">${CATEGORY_ICONS[r.category] || '💵'} ${escapeHtml(r.subcategory || r.category)}</span>
+              <span class="qc-amt">${formatMoney(r.amount)}</span>
+            </button>
+          `).join('')}
+        </div>
+      ` : ''}
+
+      <div class="card" style="margin-top:16px">
+        <input class="amount-input" id="amountInput" type="number" inputmode="decimal" placeholder="0" value="${amount}" />
+      </div>
+
+      <label>Category</label>
+      <div class="chip-grid" id="catGrid">
+        ${categoryList.map(c => `<div class="chip ${c === category ? 'active' : ''}" data-cat="${c}">${c}</div>`).join('')}
+      </div>
+
+      <label>Vendor / Note</label>
+      <div class="vendor-field">
+        <input id="subInput" type="text" placeholder="Type to search past vendors, e.g. GLD" value="${subcategory.replace(/"/g, '&quot;')}" autocomplete="off" />
+        <div class="vendor-suggestions" id="vendorSuggestions"></div>
+      </div>
+
+      <label>Date</label>
+      ${dmyDateFieldHtml('dateInput', date)}
+
+      ${mobile ? `
+        <button type="button" class="link-btn" id="moreDetailsBtn" style="margin-top:18px">${showMoreDetails ? '▾ Hide more details' : '▸ More details'}</button>
+        <div id="moreDetailsBlock" ${showMoreDetails ? '' : 'hidden'}>${moreDetailsHtml}</div>
+      ` : moreDetailsHtml}
 
       <div style="margin-top:22px;display:flex;flex-direction:column;gap:10px">
         <button class="btn" id="saveBtn">${isEdit ? 'Save Changes' : 'Add Transaction'}</button>
@@ -190,6 +202,11 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
         ${isEdit ? '<button class="btn danger" id="deleteBtn">Delete</button>' : ''}
       </div>
     `
+
+    container.querySelector('#moreDetailsBtn')?.addEventListener('click', () => {
+      showMoreDetails = !showMoreDetails
+      draw()
+    })
 
     container.querySelectorAll('#typeToggle button').forEach(btn => {
       btn.onclick = () => {
@@ -298,11 +315,10 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
     container.querySelector('#isCreditCard')?.addEventListener('change', e => { isCreditCard = e.target.checked })
     container.querySelector('#isShopee')?.addEventListener('change', e => { isShopee = e.target.checked })
     container.querySelector('#saveAsRecurring').onchange = e => { saveAsRecurring = e.target.checked; draw() }
-    container.querySelectorAll('#recurModeToggle button').forEach(btn => {
-      btn.onclick = () => { recurMode = btn.dataset.mode; draw() }
-    })
-    container.querySelector('#recurFrequency')?.addEventListener('change', e => { recurFrequency = e.target.value })
-    container.querySelector('#recurInstallmentsTotal')?.addEventListener('input', e => { recurInstallmentsTotal = e.target.value })
+    if (saveAsRecurring) wireRecurSchedule(container, recurForm, { onChange: draw })
+    container.querySelector('#manageRecurringBtn').onclick = () => {
+      openRecurringList({ recurring, onRecurringChanged })
+    }
     container.querySelector('#saveBtn').onclick = () => save(false)
     container.querySelector('#saveAndAddBtn')?.addEventListener('click', () => save(true))
     container.querySelector('#cancelBtn')?.addEventListener('click', () => onSaved())
@@ -375,28 +391,28 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
       }
       if (saveAsRecurring) {
         try {
-          const isDated = recurMode === 'auto' || recurMode === 'remind'
+          const isDated = recurForm.mode === 'auto' || recurForm.mode === 'remind'
           // this save() call is itself logging the first real payment, so a
           // Remind item starts already at "1 of N paid," due date advanced
           // to the next period — not "0 of N," which would double-count it
-          const installmentsTotal = recurMode === 'remind' && recurInstallmentsTotal ? parseInt(recurInstallmentsTotal, 10) : null
+          const installmentsTotal = recurForm.mode === 'remind' ? recurForm.installments_total : null
           await addRecurring({
             type,
             category,
             subcategory: subcategory || null,
             amount: amt,
-            mode: recurMode,
-            frequency: isDated ? recurFrequency : null,
+            mode: recurForm.mode,
+            frequency: isDated ? recurForm.frequency : null,
             // 'auto' fast-forwards past a backdated date — auto items
             // self-post via processRecurring's catch-up loop, so a next_due
             // left in the past means a pile of unwanted duplicate
             // transactions on next launch. 'remind' items never auto-post
             // (a human confirms and marks them paid), so a backdated bill
             // correctly shows as due right away instead of being suppressed.
-            next_due: recurMode === 'auto' ? firstDueOnOrAfter(date, recurFrequency) : (isDated ? advanceDate(date, recurFrequency) : null),
+            next_due: recurForm.mode === 'auto' ? firstDueOnOrAfter(date, recurForm.frequency) : (isDated ? advanceDate(date, recurForm.frequency) : null),
             installments_total: installmentsTotal,
-            installments_paid: recurMode === 'remind' ? 1 : 0,
-            active: !(recurMode === 'remind' && installmentsTotal != null && installmentsTotal <= 1),
+            installments_paid: recurForm.mode === 'remind' ? 1 : 0,
+            active: !(recurForm.mode === 'remind' && installmentsTotal != null && installmentsTotal <= 1),
             is_credit_card: type === 'expense' ? isCreditCard : false,
             is_shopee: type === 'expense' ? isShopee : false,
           })
@@ -416,7 +432,7 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
           { duration: 320, easing: 'ease-out' }
         ).finished
       } catch { /* animation can't reject in practice, but never block the save on it */ }
-      onSaved(stayOnAdd)
+      onSaved(stayOnAdd, savedTxn)
     } catch (e) {
       toast(e.message || 'Failed to save')
       btn.disabled = false

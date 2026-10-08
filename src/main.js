@@ -7,12 +7,14 @@ import { renderDashboard } from './views/dashboard.js'
 import { renderAnalysis } from './views/analysis.js'
 import { renderSettings } from './views/settings.js'
 import { renderAsk } from './views/ask.js'
-import { renderYearReview } from './views/yearReview.js'
-import { renderGoals } from './views/goals.js'
-import { toast, cacheData, getCachedData, todayISO, advanceDate } from './helpers.js'
+import { renderBudget } from './views/budget.js'
+import { openNetWorthCheckins } from './netWorthCheckins.js'
+import { toast, cacheData, getCachedData, todayISO, advanceDate, sortByDateDesc, formatMoney } from './helpers.js'
 import { categoryBudgetType } from './categories.js'
 import { applyTheme } from './theme.js'
-import { onDesktopViewChange } from './platform.js'
+import { isDesktopView, onDesktopViewChange } from './platform.js'
+import { monthlyRollup, netWorthTimeline } from './analysisData.js'
+import { isPrivacyMode, setPrivacyMode, privacyToggleHtml } from './privacy.js'
 
 applyTheme()
 
@@ -180,7 +182,27 @@ function setRange(range) {
   render()
 }
 
-async function refreshAndRender(nextView) {
+async function refreshAndRender(nextView, savedTxn) {
+  if (savedTxn) {
+    // addTransaction/updateTransaction already returned the saved row — merge
+    // it into state and render right away instead of blocking the form's
+    // reappearance on a full Supabase refetch (that's what made "Save & Add
+    // Another" feel laggy). A background reload still runs after, for
+    // eventual consistency, but deliberately doesn't trigger another render:
+    // this same code path fires while the user may already be mid-typing the
+    // next entry on the Add screen, and a forced rebuild there would wipe
+    // their in-progress input/focus. The next natural render (any
+    // navigation) picks up the reconciled state.txns automatically.
+    const idx = state.txns.findIndex(t => t.id === savedTxn.id)
+    state.txns = idx === -1
+      ? sortByDateDesc([...state.txns, savedTxn])
+      : sortByDateDesc([...state.txns.slice(0, idx), savedTxn, ...state.txns.slice(idx + 1)])
+    if (nextView) state.view = nextView
+    state.editingTxn = null
+    render()
+    loadData().catch(e => toast(e.message || 'Failed to sync'))
+    return
+  }
   try {
     await loadData()
   } catch (e) {
@@ -235,12 +257,13 @@ function renderImmediate() {
       onMonthChange: setMonth,
       onRangeChange: setRange,
       networth: state.networth,
-      onNetWorthChanged: async () => { await loadNetWorth(); render() },
+      onNetWorthChanged: async () => { await loadNetWorth(); render(); return state.networth },
       recurring: state.recurring,
       onBillsChanged: async () => { await loadData(); render() },
       suggestions: state.suggestions,
       onSuggestionsChanged: async () => { await loadData(); render() },
       goals: state.goals,
+      onGoalsChanged: async () => { await loadGoals(); render(); return state.goals },
     })
   } else if (state.view === 'transactions') {
     renderTransactions(screen, {
@@ -256,7 +279,8 @@ function renderImmediate() {
       editingTxn: state.editingTxn,
       recurring: state.recurring,
       txns: state.txns,
-      onSaved: (stayOnAdd) => refreshAndRender(stayOnAdd ? undefined : 'transactions'),
+      onSaved: (stayOnAdd, savedTxn) => refreshAndRender(stayOnAdd ? undefined : 'transactions', savedTxn),
+      onRecurringChanged: async () => { state.recurring = await fetchRecurring(); render(); return state.recurring },
     })
   } else if (state.view === 'analysis') {
     renderAnalysis(screen, {
@@ -264,6 +288,12 @@ function renderImmediate() {
       budgets: state.budgets,
       recurring: state.recurring,
       networth: state.networth,
+    })
+  } else if (state.view === 'budget') {
+    renderBudget(screen, {
+      budgets: state.budgets,
+      txns: state.txns,
+      onBudgetsChanged: async () => { state.budgets = await fetchBudgets(); render() },
     })
   } else if (state.view === 'settings') {
     renderSettings(screen, {
@@ -273,28 +303,11 @@ function renderImmediate() {
       networth: state.networth,
       goals: state.goals,
       session: state.session,
-      onBudgetsChanged: async () => { state.budgets = await fetchBudgets(); render() },
-      onRecurringChanged: async () => { state.recurring = await fetchRecurring(); render() },
-      onNetWorthChanged: async () => { await loadNetWorth(); render() },
       onSessionChanged: async () => { state.session = await getSession(); render() },
       onSignedOut: () => { state.session = null; render() },
-      onViewYearReview: () => setView('yearReview'),
-      onViewGoals: () => setView('goals'),
       // backup restore can touch all five tables at once — one combined
       // refresh instead of chaining the single-table callbacks above
       onDataRestored: async () => { await loadData(); await loadNetWorth(); await loadGoals(); render() },
-    })
-  } else if (state.view === 'yearReview') {
-    renderYearReview(screen, {
-      txns: state.txns,
-      onBack: () => setView('settings'),
-    })
-  } else if (state.view === 'goals') {
-    renderGoals(screen, {
-      goals: state.goals,
-      networth: state.networth,
-      onBack: () => setView('settings'),
-      onGoalsChanged: async () => { await loadGoals(); render() },
     })
   } else if (state.view === 'ask') {
     renderAsk(screen, {
@@ -308,6 +321,11 @@ function renderImmediate() {
   const tabbar = document.createElement('div')
   tabbar.className = 'tabbar'
   tabbar.innerHTML = `
+    <div class="tabbar-brand">
+      <img src="/favicon.svg" alt="" class="tabbar-brand-logo" />
+      <span class="tabbar-brand-name">Coin</span>
+    </div>
+    <div class="nav-label">Overview</div>
     <button class="tab ${state.view === 'dashboard' ? 'active' : ''}" data-view="dashboard">
       <span style="font-size:20px">🏠</span><span>Home</span>
     </button>
@@ -317,6 +335,11 @@ function renderImmediate() {
     <button class="tab ${state.view === 'add' ? 'active' : ''}" data-view="add">
       <span style="font-size:20px">➕</span><span>Add</span>
     </button>
+    <div class="nav-label">Planning</div>
+    <button class="tab ${state.view === 'budget' ? 'active' : ''}" data-view="budget">
+      <span style="font-size:20px">🎯</span><span>Budget</span>
+    </button>
+    <div class="nav-label">Analysis</div>
     <button class="tab ${state.view === 'analysis' ? 'active' : ''}" data-view="analysis">
       <span style="font-size:20px">📊</span><span>Analysis</span>
     </button>
@@ -325,6 +348,7 @@ function renderImmediate() {
       <span style="font-size:20px">💬</span><span>Ask</span>
     </button>
     ` : ''}
+    <div class="nav-label">System</div>
     <button class="tab ${state.view === 'settings' ? 'active' : ''}" data-view="settings">
       <span style="font-size:20px">⚙️</span><span>Settings</span>
     </button>
@@ -332,6 +356,48 @@ function renderImmediate() {
   tabbar.querySelectorAll('.tab').forEach(btn => {
     btn.onclick = () => setView(btn.dataset.view)
   })
+
+  // Desktop-sidebar-only footer panel (Ledger-inspired): a mini this-month
+  // summary + net worth snapshot, built only when the sidebar is actually
+  // showing — same JS-level device fork already used for Analysis's
+  // investment section, so mobile renders never pay for this computation.
+  if (isDesktopView()) {
+    const thisMonth = monthlyRollup(state.txns, 1)[0]
+    const nwTimeline = netWorthTimeline(state.networth)
+    const latestNw = nwTimeline[nwTimeline.length - 1]
+    const privacyOn = isPrivacyMode()
+
+    const sidebarFooter = document.createElement('div')
+    sidebarFooter.className = 'sidebar-footer'
+    sidebarFooter.innerHTML = `
+      <div class="sidebar-month-summary">
+        <div class="sms-label">This Month</div>
+        <div class="sms-row"><span class="sms-key">Income</span><span class="sms-val pos">${formatMoney(thisMonth?.income || 0)}</span></div>
+        <div class="sms-row"><span class="sms-key">Expenses</span><span class="sms-val neg">${formatMoney(thisMonth?.expense || 0)}</span></div>
+        <div class="sms-divider"></div>
+        <div class="sms-row"><span class="sms-key">Net</span><span class="sms-val">${formatMoney((thisMonth?.income || 0) - (thisMonth?.expense || 0))}</span></div>
+      </div>
+      <div class="sidebar-nw-panel">
+        <div class="sms-row" style="margin-bottom:0">
+          <span class="sms-label" style="margin-bottom:0">Net Worth</span>
+          ${privacyToggleHtml('sidebarPrivacyToggle')}
+        </div>
+        <div class="privacy-wrap${privacyOn ? ' active' : ''}">
+          <div class="sidebar-nw-total">${latestNw ? formatMoney(latestNw.total) : '—'}</div>
+          <div class="privacy-overlay">🔒 Hidden</div>
+        </div>
+      </div>
+    `
+    sidebarFooter.querySelector('#sidebarPrivacyToggle').onclick = (e) => {
+      setPrivacyMode(!isPrivacyMode())
+      const on = isPrivacyMode()
+      const btn = e.currentTarget
+      sidebarFooter.querySelector('.sidebar-nw-panel .privacy-wrap').classList.toggle('active', on)
+      btn.textContent = on ? '🙈' : '👁️'
+      btn.title = on ? 'Show balances' : 'Hide balances'
+    }
+    tabbar.appendChild(sidebarFooter)
+  }
 
   // Shown on web too (not just Electron) so it's obvious at a glance whether
   // a deploy actually landed, instead of guessing from PWA/service-worker cache.

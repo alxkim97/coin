@@ -1,8 +1,10 @@
 import { formatMoney, rangeLabel, rangeWindow, escapeHtml, effectiveDate, formatDateDMY, todayISO, toast } from '../helpers.js'
 import { BUDGET_TYPE_ORDER, EXPENSE_CATEGORIES, CATEGORY_ICONS, categoryBudgetType } from '../categories.js'
 import { getOrder, setOrder, getCollapsed, toggleCollapsed } from '../dashboardLayout.js'
+import { isDesktopView } from '../platform.js'
 import { computeCurrentLoggingStreak, computeBudgetStreak } from '../achievements.js'
-import { openNetWorthQuickLog } from '../netWorthQuickLog.js'
+import { openNetWorthCheckins } from '../netWorthCheckins.js'
+import { openGoals } from '../goalsDialog.js'
 import { netWorthTimeline, goalProgress } from '../analysisData.js'
 import { billsDue } from '../recurringReminders.js'
 import { openMarkPaidDialog } from '../markPaidDialog.js'
@@ -11,7 +13,7 @@ import { addTransaction, deleteSuggestion } from '../supabase.js'
 const RANGES = [1, 3, 6, 12]
 
 export function renderDashboard(container, opts) {
-  const { txns, budgets, year, month, range, onMonthChange, onRangeChange, networth, onNetWorthChanged, recurring, onBillsChanged, suggestions, onSuggestionsChanged, goals } = opts
+  const { txns, budgets, year, month, range, onMonthChange, onRangeChange, networth, onNetWorthChanged, recurring, onBillsChanged, suggestions, onSuggestionsChanged, goals, onGoalsChanged } = opts
   const { from, to } = rangeWindow(year, month, range)
   const rangeTxns = txns.filter(t => { const d = effectiveDate(t); return d >= from && d <= to })
 
@@ -108,7 +110,7 @@ export function renderDashboard(container, opts) {
   }
 
   const order = getOrder()
-  const collapsed = getCollapsed()
+  const collapsed = getCollapsed(!isDesktopView())
 
   container.innerHTML = `
     <div class="top-bar"><h1>Dashboard</h1></div>
@@ -159,12 +161,15 @@ export function renderDashboard(container, opts) {
 
   const widgetsEl = container.querySelector('#dashWidgets')
   widgetsEl.querySelectorAll('.widget-toggle').forEach(btn => {
-    btn.onclick = () => { toggleCollapsed(btn.dataset.widget); renderDashboard(container, opts) }
+    btn.onclick = () => { toggleCollapsed(btn.dataset.widget, !isDesktopView()); renderDashboard(container, opts) }
   })
   setupDragReorder(widgetsEl)
 
   widgetsEl.querySelector('[data-widget="networth"] .networth-widget-body')?.addEventListener('click', () => {
-    openNetWorthQuickLog({ networth, onSaved: onNetWorthChanged })
+    openNetWorthCheckins({ networth, onNetWorthChanged })
+  })
+  widgetsEl.querySelector('[data-widget="goals"] .card')?.addEventListener('click', () => {
+    openGoals({ goals: goals || [], networth, onGoalsChanged })
   })
 
   widgetsEl.querySelectorAll('.bill-mark-paid').forEach(btn => {
@@ -273,16 +278,12 @@ function renderNetWorthWidgetBody(networth) {
     deltaHtml = `<span style="color:${color}">${sign}${formatMoney(Math.abs(delta))}</span> from last`
   }
 
-  const splitParts = [`Liquid ${formatMoney(latest.cash)}`, `Invested ${formatMoney(latest.invested)}`]
-  if (latest.insurance > 0) splitParts.push(`Insurance ${formatMoney(latest.insurance)}`)
-
   return `
     <div class="networth-widget-body">
       <div class="networth-widget-icon">💰</div>
       <div class="networth-widget-main">
         <div class="networth-widget-label">Net Worth <span class="networth-widget-tap">· tap to log</span></div>
         <div class="networth-widget-val">${formatMoney(total)}</div>
-        <div class="networth-widget-split">${splitParts.join(' · ')}</div>
         <div class="networth-widget-delta">${deltaHtml}</div>
       </div>
     </div>
@@ -332,7 +333,7 @@ function renderBillsDueWidgetBody(recurring) {
 }
 
 function renderGoalsWidgetBody(goals, networth) {
-  if (!goals?.length) return '<div class="empty-state">No goals yet — add one in Settings.</div>'
+  if (!goals?.length) return '<div class="empty-state">No goals yet — tap to add one.</div>'
   return goals.map(g => {
     const progress = goalProgress(g, networth)
     const cls = progress.pct >= 100 ? '' : (progress.pct >= 80 ? 'warn' : '')

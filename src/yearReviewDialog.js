@@ -1,41 +1,52 @@
-import { computeYearReview } from '../analysisData.js'
-import { formatMoney, formatDateDMY, escapeHtml } from '../helpers.js'
-import { CATEGORY_ICONS } from '../categories.js'
+import { computeYearReview } from './analysisData.js'
+import { formatMoney, formatDateDMY, escapeHtml } from './helpers.js'
+import { CATEGORY_ICONS } from './categories.js'
 
-// Persists across re-renders within the session, same idiom as every other
-// view's module-level state (transactions.js's filters, analysis.js's period).
+// Persists across re-opens within the session, same idiom as analysis.js's period.
 let selectedYear = null
 
-export function renderYearReview(container, { txns, onBack }) {
+// Same overlay pattern as the other dialogs — reached via a link-card on the
+// Analysis page rather than a page hanging off Settings.
+export function openYearReview({ txns }) {
   const years = [...new Set(txns.map(t => Number(t.date.slice(0, 4))))].sort((a, b) => b - a)
-
   if (selectedYear === null || !years.includes(selectedYear)) {
     const now = new Date()
     const daysIntoYear = Math.ceil((now - new Date(now.getFullYear(), 0, 1)) / 86400000)
-    // less than a month into a new year, there's barely anything to review yet —
-    // default to the prior (complete-ish) year instead if it has data
     selectedYear = (daysIntoYear < 30 && years.includes(now.getFullYear() - 1))
       ? now.getFullYear() - 1
       : (years[0] ?? now.getFullYear())
   }
 
-  const review = computeYearReview(txns, selectedYear)
+  const overlay = document.createElement('div')
+  overlay.className = 'confirm-overlay'
+  document.body.appendChild(overlay)
 
-  container.innerHTML = `
-    <button class="link-btn" id="yrBack" style="margin-bottom:8px">‹ Back to Settings</button>
-    <div class="top-bar"><h1>Year in Review</h1></div>
-    ${years.length ? `
-      <div class="range-toggle" id="yearToggle">
-        ${years.map(y => `<button data-year="${y}" class="${y === selectedYear ? 'active' : ''}">${y}</button>`).join('')}
+  function render() {
+    const review = computeYearReview(txns, selectedYear)
+    overlay.innerHTML = `
+      <div class="confirm-box modal-box-lg">
+        <div class="nwq-title">Year in Review</div>
+        ${years.length ? `
+          <div class="range-toggle" id="yearToggle" style="margin-top:10px">
+            ${years.map(y => `<button data-year="${y}" class="${y === selectedYear ? 'active' : ''}">${y}</button>`).join('')}
+          </div>
+        ` : ''}
+        ${review.hasData ? reviewContentHtml(review) : `<div class="empty-state">No transactions logged in ${selectedYear}.</div>`}
       </div>
-    ` : ''}
-    ${review.hasData ? reviewContentHtml(review) : `<div class="empty-state">No transactions logged in ${selectedYear}.</div>`}
-  `
+    `
+    wire()
+  }
 
-  container.querySelector('#yrBack').onclick = onBack
-  container.querySelectorAll('#yearToggle button').forEach(btn => {
-    btn.onclick = () => { selectedYear = Number(btn.dataset.year); renderYearReview(container, { txns, onBack }) }
-  })
+  function wire() {
+    overlay.onclick = e => { if (e.target === overlay) close() }
+    overlay.querySelectorAll('#yearToggle button').forEach(btn => {
+      btn.onclick = () => { selectedYear = Number(btn.dataset.year); render() }
+    })
+  }
+
+  function close() { overlay.remove() }
+
+  render()
 }
 
 function changeBadgeHtml(pct, goodWhenNegative) {
@@ -48,7 +59,7 @@ function changeBadgeHtml(pct, goodWhenNegative) {
 function reviewContentHtml(review) {
   const savedColor = review.netSaved >= 0 ? 'var(--green)' : 'var(--red)'
   return `
-    <div class="card nw-hero-card" style="margin-bottom:16px">
+    <div class="card nw-hero-card" style="margin:16px 0">
       <div class="nw-hero-value" style="color:${savedColor}">${formatMoney(review.netSaved)}</div>
       <div class="nw-hero-trend">saved in ${review.year}${review.savingsRate != null ? ` · ${review.savingsRate.toFixed(0)}% savings rate` : ''}</div>
     </div>

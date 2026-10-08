@@ -1,63 +1,19 @@
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, BUDGET_TYPE_ORDER, CATEGORY_ICONS, FREQUENCIES } from '../categories.js'
-import { upsertBudget, signOut, addRecurring, updateRecurring, deleteRecurring, updateEmail, updateDisplayName, addNetWorth, deleteNetWorth, bulkInsertTransactions, bulkInsertRecurring, bulkRestoreNetWorth, bulkInsertGoals, savePushSubscription } from '../supabase.js'
-import { toast, downloadFile, txnsToCsv, todayISO, formatMoney, confirmDialog, frequencyLabel, escapeHtml, computeSuggestedLimits, formatDateDMY, dmyDateFieldHtml, wireDmyDateField, sortByDateDesc, urlBase64ToUint8Array } from '../helpers.js'
-
-// From `npx web-push generate-vapid-keys` — the public half is safe to ship
-// client-side by design (same idea as supabase.js's anon key), it just needs
-// to match VAPID_PRIVATE_KEY on the server (api/check-budget-alerts.js, set
-// as a Vercel env var, never committed) or subscriptions stop working.
-const VAPID_PUBLIC_KEY = 'BIpc_gh2sKjZIJeIs6idrop8Tth8SROQMyxz-fLCzj-5lXuO8axFF4p9Bfyv_n9ahV64SkR4Shit-NPiB23SH8U'
+import { toast, downloadFile, txnsToCsv, todayISO, confirmDialog, escapeHtml } from '../helpers.js'
+import { signOut, updateEmail, updateDisplayName, bulkInsertTransactions, bulkInsertRecurring, bulkRestoreNetWorth, bulkInsertGoals, upsertBudget } from '../supabase.js'
 import { ACCENTS, getMode, setMode, getAccent, setAccent } from '../theme.js'
-import { isPrivacyMode, setPrivacyMode } from '../privacy.js'
-import { latestAccountValues } from '../analysisData.js'
-import { seedNetWorthItems, netWorthItemRowsHtml, wireNetWorthItemRows, cleanNetWorthItems, findInvalidNetWorthItem } from '../netWorthForm.js'
 
-// form state for the Repeat Purchases add/edit card — persists across the
-// recursive re-renders this file does after every small change (same pattern
-// as transactions.js's module-level filter state)
-let recurringForm = null
-let networthForm = null
-
+// Settings is app-function only (appearance, data, account) — Repeat
+// Purchases/Net Worth/Goals/Year in Review each live where they're actually
+// used (Add page, Dashboard widgets, Analysis), not tucked in here.
 export function renderSettings(container, opts) {
-  const { budgets, txns, recurring, networth, goals, session, onBudgetsChanged, onRecurringChanged, onNetWorthChanged, onSignedOut, onSessionChanged } = opts
+  const { txns, budgets, recurring, networth, goals, session, onSignedOut, onSessionChanged, onDataRestored } = opts
 
   const displayName = session?.user?.user_metadata?.display_name || ''
-  const suggestedLimits = computeSuggestedLimits(txns, 3)
-
-  const budgetMap = {}
-  for (const b of budgets) budgetMap[b.category] = b.monthly_limit
-
-  const byType = {}
-  for (const c of EXPENSE_CATEGORIES) {
-    if (!byType[c.type]) byType[c.type] = []
-    byType[c.type].push(c.name)
-  }
-
   const mode = getMode()
   const accent = getAccent()
 
-  const incomeByMonth = {}
-  for (const t of txns) {
-    if (t.type !== 'income') continue
-    const key = t.date.slice(0, 7)
-    incomeByMonth[key] = (incomeByMonth[key] || 0) + Number(t.amount)
-  }
-  const incomeMonths = Object.keys(incomeByMonth)
-  const avgIncome = incomeMonths.length ? incomeMonths.reduce((s, m) => s + incomeByMonth[m], 0) / incomeMonths.length : null
-
-  const initialTotal = Object.values(budgetMap).reduce((s, v) => s + (Number(v) || 0), 0)
-
   container.innerHTML = `
     <div class="top-bar"><h1>Settings</h1></div>
-
-    <div class="card" style="margin-bottom:16px">
-      <div style="font-size:13px;color:var(--text2)">Signed in as</div>
-      <div style="font-weight:600;margin-top:2px">${escapeHtml(displayName) || session?.user?.email || ''}</div>
-      ${displayName ? `<div style="font-size:12px;color:var(--text3);margin-top:2px">${escapeHtml(session?.user?.email || '')}</div>` : ''}
-      <label style="margin-top:14px">Display Name</label>
-      <input id="displayNameInput" type="text" placeholder="e.g. Alex" value="${escapeHtml(displayName)}" />
-      <button class="btn secondary" id="saveDisplayNameBtn" style="margin-top:10px">Save</button>
-    </div>
 
     <h2>Appearance</h2>
     <div class="card" style="margin-bottom:16px">
@@ -71,92 +27,6 @@ export function renderSettings(container, opts) {
       <div class="accent-swatches" id="accentSwatches">
         ${ACCENTS.map(a => `<button class="accent-swatch ${a.id === accent ? 'active' : ''}" data-accent="${a.id}" style="background:${a.swatch}" title="${a.label}" aria-label="${a.label}"></button>`).join('')}
       </div>
-    </div>
-
-    <h2>Monthly Budget Limits</h2>
-    <div class="card">
-      ${BUDGET_TYPE_ORDER.map(type => `
-        <div style="margin-bottom:14px">
-          <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.03em;margin-bottom:8px">${type}</div>
-          ${byType[type].map(cat => `
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-              <div style="flex:1;font-size:14px">${cat}</div>
-              <input type="number" inputmode="decimal" class="budgetInput" data-cat="${cat}" data-type="${type}"
-                style="width:120px" placeholder="0" value="${budgetMap[cat] || ''}" />
-            </div>
-          `).join('')}
-        </div>
-      `).join('')}
-
-      <div class="budget-total-row">
-        <span class="lbl">Total budgeted</span>
-        <span class="val" id="budgetTotalVal">${formatMoney(initialTotal)}</span>
-      </div>
-      ${avgIncome !== null ? `<div class="budget-income-compare" id="budgetIncomeCompare"></div>` : `<div class="budget-income-compare">Log some income transactions to compare this against your average salary.</div>`}
-
-      <div style="display:flex;gap:10px;margin-top:14px">
-        <button class="btn" id="saveBudgets">Save Budgets</button>
-        <button class="btn secondary" id="loadSuggested">↺ Load from Last 3 Months</button>
-      </div>
-      <div style="font-size:12px;color:var(--text2);margin-top:10px">Fills the fields above from your average spend per category over the last 3 months — review before saving.</div>
-    </div>
-
-    <h2>Budget Alerts</h2>
-    <div class="card" style="margin-bottom:16px">
-      <div style="font-size:13px;color:var(--text2);margin-bottom:12px">Get a push notification when a budget category crosses 90% or 100% for the month.</div>
-      <button class="btn secondary" id="enableAlertsBtn">Enable Budget Alerts</button>
-    </div>
-
-    <h2>Repeat Purchases</h2>
-    ${recurringForm ? renderRecurringForm(recurringForm) : ''}
-    <div class="card" style="margin-bottom:16px">
-      ${recurring.length === 0 ? '<div class="empty-state">No repeat purchases yet — rent, insurance, or anything you log often.</div>' : recurring.map(r => `
-        <div class="recurring-row">
-          <div class="recurring-icon">${CATEGORY_ICONS[r.category] || '💵'}</div>
-          <div class="recurring-main">
-            <div class="recurring-name">${escapeHtml(r.category)}${r.subcategory ? ' · ' + escapeHtml(r.subcategory) : ''}</div>
-            <div class="recurring-meta">${
-              r.mode === 'auto' ? `Auto · ${frequencyLabel(r.frequency)} · next ${formatDateDMY(r.next_due)}`
-              : r.mode === 'remind' ? `Remind · ${frequencyLabel(r.frequency)} · next ${formatDateDMY(r.next_due)}${r.installments_total ? ` · ${r.installments_paid || 0} of ${r.installments_total} paid` : ''}`
-              : 'Quick pick'
-            }${r.active ? '' : ' · paused'}</div>
-          </div>
-          <div class="recurring-amt">${formatMoney(r.amount)}</div>
-          <button class="recurring-edit" data-id="${r.id}">Edit</button>
-        </div>
-      `).join('')}
-      ${!recurringForm ? '<button class="btn secondary" id="addRecurringBtn" style="margin-top:12px">+ Add Repeat Purchase</button>' : ''}
-    </div>
-
-    <div class="top-bar"><h2 style="margin:0">Net Worth</h2><button class="privacy-toggle-btn" id="privacyToggleSettings" title="${isPrivacyMode() ? 'Show balances' : 'Hide balances'}">${isPrivacyMode() ? '🙈' : '👁️'}</button></div>
-    ${networthForm ? renderNetWorthForm(networthForm) : ''}
-    <div class="privacy-wrap${isPrivacyMode() ? ' active' : ''}" style="margin-bottom:16px">
-      <div class="card">
-        ${networth.length === 0 ? '<div class="empty-state">No check-ins yet — log your account balances periodically to see a trend in Analysis.</div>' : sortByDateDesc(networth).map(n => `
-          <div class="networth-row" data-id="${n.id}">
-            <div class="networth-main">
-              <div class="networth-date">${formatDateDMY(n.date)}</div>
-              <div class="networth-breakdown">${n.items && n.items.length ? n.items.map(i => `${escapeHtml(i.name)} ${formatMoney(i.value)}`).join(' · ') : `${formatMoney(n.cash)} cash · ${formatMoney(n.invested)} invested`}</div>
-            </div>
-            <div class="networth-total">${formatMoney(n.items && n.items.length ? n.items.reduce((s, i) => s + Number(i.value), 0) : Number(n.cash) + Number(n.invested))}</div>
-            <button class="networth-delete" data-id="${n.id}">Delete</button>
-          </div>
-        `).join('')}
-        ${!networthForm ? '<button class="btn secondary" id="addNetWorthBtn" style="margin-top:12px">+ Add Check-in</button>' : ''}
-      </div>
-      ${isPrivacyMode() ? '<div class="privacy-overlay">🔒 Balances hidden</div>' : ''}
-    </div>
-
-    <h2>Goals</h2>
-    <div class="card" style="margin-bottom:16px">
-      <div style="font-size:13px;color:var(--text2);margin-bottom:12px">${goals.length ? `${goals.length} savings goal${goals.length === 1 ? '' : 's'} tracked.` : 'Set a target for something specific, like a renovation fund or a trip.'}</div>
-      <button class="btn secondary" id="goalsBtn">${goals.length ? 'Manage Goals' : '+ Add a Goal'}</button>
-    </div>
-
-    <h2>Year in Review</h2>
-    <div class="card" style="margin-bottom:16px">
-      <div style="font-size:13px;color:var(--text2);margin-bottom:12px">A recap of any year you've logged — income, spending, top categories, and personal records.</div>
-      <button class="btn secondary" id="yearReviewBtn">View Year in Review</button>
     </div>
 
     <h2>Data</h2>
@@ -183,7 +53,13 @@ export function renderSettings(container, opts) {
 
     <h2>Account</h2>
     <div class="card" style="margin-bottom:16px">
-      <label style="margin-top:0">Change Email</label>
+      <div style="font-size:13px;color:var(--text2)">Signed in as</div>
+      <div style="font-weight:600;margin-top:2px">${escapeHtml(displayName) || session?.user?.email || ''}</div>
+      ${displayName ? `<div style="font-size:12px;color:var(--text3);margin-top:2px">${escapeHtml(session?.user?.email || '')}</div>` : ''}
+      <label style="margin-top:14px">Display Name</label>
+      <input id="displayNameInput" type="text" placeholder="e.g. Alex" value="${escapeHtml(displayName)}" />
+      <button class="btn secondary" id="saveDisplayNameBtn" style="margin-top:10px">Save</button>
+      <label style="margin-top:16px">Change Email</label>
       <input id="newEmailInput" type="email" placeholder="new-email@example.com" />
       <button class="btn secondary" id="changeEmailBtn" style="margin-top:10px">Send Confirmation Link</button>
       <div style="font-size:12px;color:var(--text2);margin-top:8px">You'll get a confirmation link at the new address — nothing changes until you click it, and you keep signing in with your current email until then.</div>
@@ -199,27 +75,6 @@ export function renderSettings(container, opts) {
   container.querySelector('#accentSwatches').querySelectorAll('button').forEach(btn => {
     btn.onclick = () => { setAccent(btn.dataset.accent); renderSettings(container, opts) }
   })
-
-  container.querySelector('#yearReviewBtn').onclick = () => opts.onViewYearReview()
-
-  container.querySelector('#enableAlertsBtn').onclick = async () => {
-    if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
-      toast("This browser doesn't support push notifications")
-      return
-    }
-    const permission = await Notification.requestPermission()
-    if (permission !== 'granted') { toast('Notification permission denied'); return }
-    try {
-      const reg = await navigator.serviceWorker.ready
-      let sub = await reg.pushManager.getSubscription()
-      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) })
-      await savePushSubscription(sub)
-      toast('Budget alerts enabled')
-    } catch (e) {
-      toast(e.message || 'Failed to enable alerts')
-    }
-  }
-  container.querySelector('#goalsBtn').onclick = () => opts.onViewGoals()
 
   container.querySelector('#exportCsv').onclick = () => {
     downloadFile(`coin-transactions-${todayISO()}.csv`, txnsToCsv(txns), 'text/csv')
@@ -266,36 +121,10 @@ export function renderSettings(container, opts) {
       if (backup.networth?.length) await bulkRestoreNetWorth(backup.networth)
       if (backup.goals?.length) await bulkInsertGoals(backup.goals)
       toast('Backup restored')
-      await opts.onDataRestored()
+      await onDataRestored()
     } catch (e) {
       toast(e.message || 'Restore failed — some records may have been partially imported')
     }
-  }
-
-  function updateTotal() {
-    const total = [...container.querySelectorAll('.budgetInput')].reduce((s, inp) => s + (parseFloat(inp.value) || 0), 0)
-    container.querySelector('#budgetTotalVal').textContent = formatMoney(total)
-    const compareEl = container.querySelector('#budgetIncomeCompare')
-    if (compareEl && avgIncome) {
-      const pct = Math.round((total / avgIncome) * 100)
-      compareEl.textContent = `${pct}% of your avg income — ${formatMoney(avgIncome)}/mo over ${incomeMonths.length} logged month${incomeMonths.length === 1 ? '' : 's'}`
-      compareEl.style.color = total > avgIncome ? 'var(--red)' : 'var(--text2)'
-    }
-  }
-  container.querySelectorAll('.budgetInput').forEach(input => {
-    input.oninput = updateTotal
-  })
-  updateTotal()
-
-  container.querySelector('#loadSuggested').onclick = async () => {
-    const ok = await confirmDialog('Fill budget fields from your last 3 months of spending? This overwrites what\'s currently typed here — nothing saves until you click Save Budgets.', 'Load')
-    if (!ok) return
-    container.querySelectorAll('.budgetInput').forEach(input => {
-      const suggested = suggestedLimits[input.dataset.cat]
-      if (suggested !== undefined) input.value = suggested
-    })
-    updateTotal()
-    toast('Loaded — review and Save Budgets when ready')
   }
 
   container.querySelector('#saveDisplayNameBtn').onclick = async () => {
@@ -306,80 +135,13 @@ export function renderSettings(container, opts) {
     try {
       await updateDisplayName(name)
       toast('Display name updated')
-      await opts.onSessionChanged()
+      await onSessionChanged()
     } catch (e) {
       toast(e.message || 'Failed to update')
       btn.disabled = false
       btn.textContent = 'Save'
     }
   }
-
-  container.querySelector('#saveBudgets').onclick = async () => {
-    const btn = container.querySelector('#saveBudgets')
-    btn.disabled = true
-    btn.textContent = 'Saving…'
-    try {
-      const inputs = [...container.querySelectorAll('.budgetInput')]
-      for (const input of inputs) {
-        const val = parseFloat(input.value) || 0
-        const prev = budgetMap[input.dataset.cat] || 0
-        if (val !== prev) {
-          await upsertBudget(input.dataset.cat, val, input.dataset.type)
-        }
-      }
-      toast('Budgets saved')
-      await onBudgetsChanged()
-    } catch (e) {
-      toast(e.message || 'Failed to save budgets')
-    } finally {
-      btn.disabled = false
-      btn.textContent = 'Save Budgets'
-    }
-  }
-
-  container.querySelector('#addRecurringBtn')?.addEventListener('click', () => {
-    recurringForm = { id: null, type: 'expense', category: null, subcategory: '', amount: '', mode: 'auto', frequency: 'monthly', next_due: todayISO(), installments_total: null, installments_paid: 0, is_credit_card: false, is_shopee: false }
-    renderSettings(container, opts)
-  })
-  container.querySelectorAll('.recurring-edit').forEach(btn => {
-    btn.onclick = () => {
-      const r = recurring.find(x => x.id === btn.dataset.id)
-      if (!r) return
-      recurringForm = {
-        id: r.id, type: r.type, category: r.category, subcategory: r.subcategory || '',
-        amount: String(r.amount), mode: r.mode, frequency: r.frequency || 'monthly', next_due: r.next_due || todayISO(),
-        installments_total: r.installments_total ?? null,
-        installments_paid: r.installments_paid || 0,
-        is_credit_card: r.is_credit_card || false,
-        is_shopee: r.is_shopee || false,
-      }
-      renderSettings(container, opts)
-    }
-  })
-  wireRecurringForm(container, opts)
-
-  container.querySelector('#privacyToggleSettings')?.addEventListener('click', () => {
-    setPrivacyMode(!isPrivacyMode())
-    renderSettings(container, opts)
-  })
-  container.querySelector('#addNetWorthBtn')?.addEventListener('click', () => {
-    networthForm = { date: todayISO(), items: seedNetWorthItems(latestAccountValues(opts.networth)) }
-    renderSettings(container, opts)
-  })
-  container.querySelectorAll('.networth-delete').forEach(btn => {
-    btn.onclick = async () => {
-      const ok = await confirmDialog('Delete this check-in?', 'Delete', true)
-      if (!ok) return
-      try {
-        await deleteNetWorth(btn.dataset.id)
-        toast('Deleted')
-        await opts.onNetWorthChanged()
-      } catch (e) {
-        toast(e.message || 'Failed to delete')
-      }
-    }
-  })
-  wireNetWorthForm(container, opts)
 
   container.querySelector('#changeEmailBtn').onclick = async () => {
     const input = container.querySelector('#newEmailInput')
@@ -413,209 +175,5 @@ export function renderSettings(container, opts) {
       if (el) el.textContent = v
     })
     container.querySelector('#checkUpdatesBtn').onclick = () => window.electronAPI.checkForUpdates()
-  }
-}
-
-function renderRecurringForm(form) {
-  const categoryList = form.type === 'expense' ? EXPENSE_CATEGORIES.map(c => c.name) : INCOME_CATEGORIES
-  return `
-    <div class="card" style="margin-bottom:16px">
-      <div style="font-weight:700;font-size:14px;margin-bottom:12px">${form.id ? 'Edit' : 'New'} Repeat Purchase</div>
-
-      <div class="toggle-row" id="recTypeToggle">
-        <button data-type="expense" class="${form.type === 'expense' ? 'active expense' : ''}">Expense</button>
-        <button data-type="income" class="${form.type === 'income' ? 'active income' : ''}">Income</button>
-      </div>
-
-      <label>Category</label>
-      <div class="chip-grid" id="recCatGrid">
-        ${categoryList.map(c => `<div class="chip ${c === form.category ? 'active' : ''}" data-cat="${escapeHtml(c)}">${escapeHtml(c)}</div>`).join('')}
-      </div>
-
-      <label>Vendor / Note</label>
-      <input id="recSub" type="text" placeholder="e.g. Condo, AIA Insurance" value="${escapeHtml(form.subcategory)}" />
-
-      <label>Amount</label>
-      <input id="recAmount" type="number" inputmode="decimal" placeholder="0" value="${escapeHtml(form.amount)}" />
-
-      <label>Mode</label>
-      <div class="toggle-row" id="recModeToggle">
-        <button data-mode="auto" class="${form.mode === 'auto' ? 'active' : ''}">Automatic</button>
-        <button data-mode="remind" class="${form.mode === 'remind' ? 'active' : ''}">Remind</button>
-        <button data-mode="quick" class="${form.mode === 'quick' ? 'active' : ''}">Quick Pick</button>
-      </div>
-
-      ${form.mode === 'auto' || form.mode === 'remind' ? `
-        <label>Frequency</label>
-        <select id="recFrequency">
-          ${FREQUENCIES.map(f => `<option value="${f}" ${form.frequency === f ? 'selected' : ''}>${frequencyLabel(f)}</option>`).join('')}
-        </select>
-        <label>Next Due</label>
-        ${dmyDateFieldHtml('recNextDue', form.next_due)}
-        ${form.mode === 'auto' ? `
-          <div style="font-size:12px;color:var(--text2);margin-top:8px">Posts automatically as a real transaction the next time you open Coin on or after this date.</div>
-        ` : `
-          <label>Number of Payments (optional)</label>
-          <input id="recInstallmentsTotal" type="number" inputmode="numeric" min="1" placeholder="Leave blank if ongoing" value="${form.installments_total != null ? form.installments_total : ''}" />
-          ${!form.id ? `
-            <label>Already Paid (optional)</label>
-            <input id="recInstallmentsPaid" type="number" inputmode="numeric" min="0" placeholder="0" value="${form.installments_paid || ''}" />
-            <div style="font-size:12px;color:var(--text2);margin-top:4px">Set this if you're logging an installment plan that's already partway through — e.g. 3 if you've paid 3 of 10 outside Coin so far.</div>
-          ` : ''}
-          <div style="font-size:12px;color:var(--text2);margin-top:8px">Shows up under Bills Due on the Dashboard once due — you confirm the amount and mark it paid, nothing posts on its own.${form.installments_total ? ` Stops reminding after ${form.installments_total} payments (${form.installments_paid || 0} so far).` : ' Leave the payment count blank for something ongoing, like rent — set it (e.g. 10) for a fixed-term installment that should stop itself.'}</div>
-        `}
-      ` : `
-        <div style="font-size:12px;color:var(--text2);margin-top:8px">Shows as a one-tap shortcut on the Add screen — nothing posts until you tap it there.</div>
-      `}
-
-      ${form.type === 'expense' ? `
-        <label class="checkbox-row" style="margin-top:16px">
-          <input type="checkbox" id="recIsCreditCard" ${form.is_credit_card ? 'checked' : ''} />
-          <span>💳 Paid via credit card</span>
-        </label>
-        <label class="checkbox-row" style="margin-top:8px">
-          <input type="checkbox" id="recIsShopee" ${form.is_shopee ? 'checked' : ''} />
-          <span>🛍️ Bought via Shopee</span>
-        </label>
-      ` : ''}
-
-      <div style="display:flex;gap:10px;margin-top:16px">
-        <button class="btn" id="recSave">${form.id ? 'Save Changes' : 'Add'}</button>
-        <button class="btn secondary" id="recCancel">Cancel</button>
-        ${form.id ? '<button class="btn danger" id="recDelete">Delete</button>' : ''}
-      </div>
-    </div>
-  `
-}
-
-function wireRecurringForm(container, opts) {
-  if (!recurringForm) return
-
-  container.querySelector('#recTypeToggle').querySelectorAll('button').forEach(btn => {
-    btn.onclick = () => { recurringForm.type = btn.dataset.type; recurringForm.category = null; renderSettings(container, opts) }
-  })
-  container.querySelector('#recCatGrid').querySelectorAll('.chip').forEach(chip => {
-    chip.onclick = () => { recurringForm.category = chip.dataset.cat; renderSettings(container, opts) }
-  })
-  container.querySelector('#recSub').oninput = e => { recurringForm.subcategory = e.target.value }
-  container.querySelector('#recAmount').oninput = e => { recurringForm.amount = e.target.value }
-  container.querySelector('#recModeToggle').querySelectorAll('button').forEach(btn => {
-    btn.onclick = () => { recurringForm.mode = btn.dataset.mode; renderSettings(container, opts) }
-  })
-  container.querySelector('#recFrequency')?.addEventListener('change', e => { recurringForm.frequency = e.target.value })
-  if (container.querySelector('#recNextDue')) wireDmyDateField(container, 'recNextDue', v => { recurringForm.next_due = v })
-  container.querySelector('#recInstallmentsTotal')?.addEventListener('input', e => {
-    recurringForm.installments_total = e.target.value === '' ? null : parseInt(e.target.value, 10)
-  })
-  container.querySelector('#recInstallmentsPaid')?.addEventListener('input', e => {
-    recurringForm.installments_paid = e.target.value === '' ? 0 : parseInt(e.target.value, 10)
-  })
-  container.querySelector('#recIsCreditCard')?.addEventListener('change', e => { recurringForm.is_credit_card = e.target.checked })
-  container.querySelector('#recIsShopee')?.addEventListener('change', e => { recurringForm.is_shopee = e.target.checked })
-
-  container.querySelector('#recCancel').onclick = () => { recurringForm = null; renderSettings(container, opts) }
-
-  container.querySelector('#recSave').onclick = async () => {
-    const amt = parseFloat(recurringForm.amount)
-    if (!amt || amt <= 0) { toast('Enter a valid amount'); return }
-    if (!recurringForm.category) { toast('Pick a category'); return }
-    const btn = container.querySelector('#recSave')
-    btn.disabled = true
-    btn.textContent = 'Saving…'
-    try {
-      const payload = {
-        type: recurringForm.type,
-        category: recurringForm.category,
-        subcategory: recurringForm.subcategory || null,
-        amount: amt,
-        mode: recurringForm.mode,
-        frequency: recurringForm.mode === 'auto' || recurringForm.mode === 'remind' ? recurringForm.frequency : null,
-        next_due: recurringForm.mode === 'auto' || recurringForm.mode === 'remind' ? recurringForm.next_due : null,
-        installments_total: recurringForm.mode === 'remind' ? (recurringForm.installments_total || null) : null,
-        installments_paid: recurringForm.installments_paid || 0,
-        active: true,
-        is_credit_card: recurringForm.type === 'expense' ? !!recurringForm.is_credit_card : false,
-        is_shopee: recurringForm.type === 'expense' ? !!recurringForm.is_shopee : false,
-      }
-      if (recurringForm.id) {
-        await updateRecurring(recurringForm.id, payload)
-        toast('Saved')
-      } else {
-        await addRecurring(payload)
-        toast('Added')
-      }
-      recurringForm = null
-      await opts.onRecurringChanged()
-    } catch (e) {
-      toast(e.message || 'Failed to save')
-      btn.disabled = false
-      btn.textContent = recurringForm.id ? 'Save Changes' : 'Add'
-    }
-  }
-
-  container.querySelector('#recDelete')?.addEventListener('click', async () => {
-    const ok = await confirmDialog('Delete this repeat purchase?', 'Delete', true)
-    if (!ok) return
-    try {
-      await deleteRecurring(recurringForm.id)
-      toast('Deleted')
-      recurringForm = null
-      await opts.onRecurringChanged()
-    } catch (e) {
-      toast(e.message || 'Failed to delete')
-    }
-  })
-}
-
-function renderNetWorthForm(form) {
-  return `
-    <div class="card" style="margin-bottom:16px">
-      <div style="font-weight:700;font-size:14px;margin-bottom:12px">New Check-in</div>
-      <label style="margin-top:0">Date</label>
-      <input id="nwDate" type="date" value="${form.date}" />
-      <label>Accounts</label>
-      ${netWorthItemRowsHtml(form.items)}
-      <div style="font-size:11.5px;color:var(--text3);margin-top:6px">Leave a balance blank to skip that account this time — it won't be zeroed out.</div>
-      <button class="btn secondary" id="nwAddItem" style="margin-top:8px">+ Add Account</button>
-      <div style="display:flex;gap:10px;margin-top:16px">
-        <button class="btn" id="nwSave">Add</button>
-        <button class="btn secondary" id="nwCancel">Cancel</button>
-      </div>
-    </div>
-  `
-}
-
-function wireNetWorthForm(container, opts) {
-  if (!networthForm) return
-
-  container.querySelector('#nwDate').oninput = e => { networthForm.date = e.target.value }
-  container.querySelector('#nwCancel').onclick = () => { networthForm = null; renderSettings(container, opts) }
-
-  wireNetWorthItemRows(container, networthForm.items, { onChange: () => renderSettings(container, opts) })
-
-  container.querySelector('#nwAddItem').onclick = () => {
-    networthForm.items.push({ name: '', category: 'cash', value: '', lastValue: null })
-    renderSettings(container, opts)
-  }
-
-  container.querySelector('#nwSave').onclick = async () => {
-    const invalidRow = findInvalidNetWorthItem(networthForm.items)
-    if (invalidRow) { toast(`Can't work out "${invalidRow.value}" for ${invalidRow.name.trim()}`); return }
-    const cleaned = cleanNetWorthItems(networthForm.items)
-    if (!networthForm.date) { toast('Pick a date'); return }
-    if (!cleaned.length) { toast('Add at least one named account'); return }
-    const btn = container.querySelector('#nwSave')
-    btn.disabled = true
-    btn.textContent = 'Saving…'
-    try {
-      await addNetWorth({ date: networthForm.date, items: cleaned })
-      toast('Check-in added')
-      networthForm = null
-      await opts.onNetWorthChanged()
-    } catch (e) {
-      toast(e.message || 'Failed to save')
-      btn.disabled = false
-      btn.textContent = 'Add'
-    }
   }
 }

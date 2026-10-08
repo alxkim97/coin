@@ -16,8 +16,30 @@ export function seedNetWorthItems(known) {
     : [{ name: '', category: 'cash', value: '', lastValue: null }]
 }
 
+const GROUP_ORDER = [
+  { key: 'cash', label: 'Liquid' },
+  { key: 'invested', label: 'Investment' },
+  { key: 'insurance', label: 'Insurance' },
+]
+
+// Grouped by category for scanability — a flat list of 6+ accounts reads as
+// noise once there's a mix of bank/investment/insurance rows. Grouping is
+// display-only: each row keeps data-index pointing at its real position in
+// the underlying `items` array (not the group's position), so wiring below
+// doesn't need to change and removing/editing a row still hits the right one.
 export function netWorthItemRowsHtml(items) {
-  return items.map((it, i) => `
+  return GROUP_ORDER.map(({ key, label }) => {
+    const indices = items.map((it, i) => [it, i]).filter(([it]) => it.category === key).map(([, i]) => i)
+    if (!indices.length) return ''
+    return `
+      <div class="nw-item-group-label">${label}</div>
+      ${indices.map(i => itemRowHtml(items[i], i, items.length)).join('')}
+    `
+  }).join('')
+}
+
+function itemRowHtml(it, i, total) {
+  return `
     <div class="nw-item-row" data-index="${i}">
       <input class="nwItemName" type="text" placeholder="e.g. KBANK Savings" value="${escapeHtml(it.name)}" />
       <select class="nwItemCategory">
@@ -26,9 +48,9 @@ export function netWorthItemRowsHtml(items) {
         <option value="insurance" ${it.category === 'insurance' ? 'selected' : ''}>Insurance</option>
       </select>
       <input class="nwItemValue" type="text" inputmode="decimal" placeholder="${it.lastValue != null ? escapeHtml(formatMoney(it.lastValue)) : 'e.g. 500000+3507.34'}" value="${escapeHtml(it.value)}" />
-      <button class="nwItemRemove" type="button" ${items.length <= 1 ? 'disabled' : ''}>✕</button>
+      <button class="nwItemRemove" type="button" ${total <= 1 ? 'disabled' : ''}>✕</button>
     </div>
-  `).join('')
+  `
 }
 
 // Wires the item-row inputs inside `root` against `items`. Text/select edits
@@ -38,7 +60,7 @@ export function wireNetWorthItemRows(root, items, { onChange, onEnter } = {}) {
   root.querySelectorAll('.nw-item-row').forEach(row => {
     const i = Number(row.dataset.index)
     row.querySelector('.nwItemName').oninput = e => { items[i].name = e.target.value }
-    row.querySelector('.nwItemCategory').onchange = e => { items[i].category = e.target.value }
+    row.querySelector('.nwItemCategory').onchange = e => { items[i].category = e.target.value; onChange?.() }
     row.querySelector('.nwItemValue').oninput = e => { items[i].value = e.target.value }
     if (onEnter) row.querySelector('.nwItemValue').onkeydown = e => { if (e.key === 'Enter') onEnter() }
     // collapse an expression like "500000+3507.34" down to its total as soon

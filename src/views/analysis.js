@@ -3,9 +3,12 @@ import { dailySpend, categoryBreakdown, monthlyRollup, heatmapData, generateInsi
 import { getAchievementDefs } from '../achievements.js'
 import { CATEGORY_ICONS } from '../categories.js'
 import { formatMoney, localISO, toast, formatDateDMY, escapeHtml } from '../helpers.js'
-import { isPrivacyMode, setPrivacyMode, privacyToggleHtml } from '../privacy.js'
+import { isPrivacyMode, setPrivacyMode } from '../privacy.js'
 import { isDesktopView } from '../platform.js'
 import { renderInvestmentDepth, renderNetWorthSummaryCard } from './analysisInvestments.js'
+import { openBalanceForecast } from '../balanceForecastDialog.js'
+import { openInvestmentCalculator } from '../investmentCalculatorDialog.js'
+import { openYearReview } from '../yearReviewDialog.js'
 
 Chart.register(...registerables)
 
@@ -35,6 +38,8 @@ function cssVar(name) {
 export function renderAnalysis(container, opts) {
   const { txns, budgets, recurring, networth } = opts
   const privacyOn = isPrivacyMode()
+  const proj12 = computeProjection(txns, networth || [], 12)
+  const forecastSummaryText = `Projected net worth 12 months out: ${formatMoney(proj12.points[proj12.points.length - 1].value)}, based on your last 3 months' avg income/expense.`
   container.innerHTML = `
     <div class="top-bar"><h1>Analysis</h1></div>
     <div class="range-toggle" id="periodToggle">
@@ -58,15 +63,19 @@ export function renderAnalysis(container, opts) {
 
     <div id="investmentSection"></div>
 
-    <div class="top-bar" style="margin-top:6px"><h2 style="margin:0">Projection</h2>${privacyToggleHtml('privacyToggleProj')}</div>
-    <div class="privacy-wrap${privacyOn ? ' active' : ''}">
+    <h2>Balance Forecast</h2>
+    <div class="privacy-wrap${privacyOn ? ' active' : ''}" style="margin-bottom:16px">
       <div class="card">
-        <div class="proj-phase" id="projPhase"></div>
-        <div class="proj-stats" id="projStats"></div>
-        <div class="chart-box"><canvas id="projChart"></canvas></div>
-        <div class="proj-note" id="projNote"></div>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:12px">${forecastSummaryText}</div>
+        <button class="btn secondary" id="balanceForecastBtn" style="width:auto">View Full Forecast</button>
       </div>
       <div class="privacy-overlay">🔒 Balances hidden</div>
+    </div>
+
+    <h2>Investment Calculator</h2>
+    <div class="card" style="margin-bottom:16px">
+      <div style="font-size:13px;color:var(--text2);margin-bottom:12px">Project how your GLD/index-fund contributions could grow over time.</div>
+      <button class="btn secondary" id="investmentCalcBtn" style="width:auto">Open Calculator</button>
     </div>
 
     <h2>Cashflow Forecast (Next 60 Days)</h2>
@@ -74,6 +83,12 @@ export function renderAnalysis(container, opts) {
 
     <h2>Personal Records</h2>
     <div class="card"><div class="record-grid" id="personalRecords"></div></div>
+
+    <h2>Year in Review</h2>
+    <div class="card" style="margin-bottom:16px">
+      <div style="font-size:13px;color:var(--text2);margin-bottom:12px">A recap of any year you've logged — income, spending, top categories, and personal records.</div>
+      <button class="btn secondary" id="yearReviewBtn" style="width:auto">View Year in Review</button>
+    </div>
 
     <div class="top-bar" style="margin-top:6px"><h2 style="margin:0">Achievements</h2><span class="achievement-count" id="achievementCount"></span></div>
     <div class="card"><div class="achievement-grid" id="achievementGrid"></div></div>
@@ -94,7 +109,9 @@ export function renderAnalysis(container, opts) {
   const investmentSection = container.querySelector('#investmentSection')
   if (isDesktopView()) renderInvestmentDepth(investmentSection, networth || [])
   else renderNetWorthSummaryCard(investmentSection, networth || [])
-  renderProjectionSection(container, txns, networth || [])
+  container.querySelector('#balanceForecastBtn').onclick = () => openBalanceForecast({ txns, networth: networth || [] })
+  container.querySelector('#yearReviewBtn').onclick = () => openYearReview({ txns })
+  container.querySelector('#investmentCalcBtn').onclick = () => openInvestmentCalculator({ txns })
   renderCashflowForecast(container, recurring)
   renderPersonalRecords(container, txns)
   renderAchievements(container, txns, budgets, recurring)
@@ -107,7 +124,7 @@ export function renderAnalysis(container, opts) {
   // own privacy-toggle button into the DOM — both buttons mirror the same
   // isPrivacyMode() flag and toggle every .privacy-wrap under this
   // container, not just their own section's.
-  ;['privacyToggleNw', 'privacyToggleProj'].forEach(id => {
+  ;['privacyToggleNw'].forEach(id => {
     const btn = container.querySelector('#' + id)
     if (btn) btn.onclick = () => {
       setPrivacyMode(!isPrivacyMode())
@@ -159,48 +176,6 @@ function renderCashflowForecast(container, recurring) {
       </div>
     `).join('')}
   `
-}
-
-function renderProjectionSection(container, txns, networth) {
-  const proj = computeProjection(txns, networth, 12)
-
-  container.querySelector('#projPhase').innerHTML = `<span class="proj-phase-icon">${proj.phaseIcon}</span> ${proj.phase}`
-  container.querySelector('#projStats').innerHTML = `
-    <div class="proj-stat"><div class="proj-stat-label">Avg Income</div><div class="proj-stat-val">${formatMoney(proj.avgIncome)}/mo</div></div>
-    <div class="proj-stat"><div class="proj-stat-label">Avg Expense</div><div class="proj-stat-val">${formatMoney(proj.avgExpense)}/mo</div></div>
-    <div class="proj-stat"><div class="proj-stat-label">Avg Net</div><div class="proj-stat-val" style="color:${proj.avgNet >= 0 ? 'var(--green)' : 'var(--red)'}">${formatMoney(proj.avgNet)}/mo</div></div>
-  `
-  container.querySelector('#projNote').textContent = proj.hasCheckin
-    ? ''
-    : 'No net worth check-in yet — projection starts from ฿0. Add a check-in in Settings → Net Worth for a real starting point.'
-
-  const text3 = cssVar('--text3')
-  const grid = cssVar('--chart-grid')
-  const accent = cssVar('--accent')
-
-  renderChart('projection', container.querySelector('#projChart'), {
-    type: 'line',
-    data: {
-      labels: proj.points.map(p => p.label),
-      datasets: [{
-        label: 'Projected Net Worth', data: proj.points.map(p => p.value),
-        borderColor: accent, backgroundColor: accent + '15', borderWidth: 2, borderDash: [6, 4],
-        fill: true, tension: 0.3, pointRadius: 2,
-      }],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: ctx => formatMoney(ctx.parsed.y) } },
-      },
-      scales: {
-        x: { ticks: { color: text3, font: { size: 10 }, maxTicksLimit: 7 }, grid: { display: false } },
-        y: { ticks: { color: text3, font: { size: 10 }, callback: v => formatMoney(v) }, grid: { color: grid } },
-      },
-    },
-  })
 }
 
 function renderAchievements(container, txns, budgets, recurring) {

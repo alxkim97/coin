@@ -756,6 +756,9 @@ label:first-child { margin-top: 0; }
 .budget-total-row .lbl { color: var(--text2); font-weight: 600; }
 .budget-total-row .val { font-weight: 700; font-size: 16px; }
 .budget-income-compare { font-size: 12.5px; color: var(--text2); margin-top: 6px; }
+.budget-overview-grid { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; margin-bottom: 16px; }
+.budget-chart-card { flex: 1 1 320px; max-width: 420px; }
+.budget-inputs-card { flex: 2 1 320px; min-width: 0; }
 
 /* transactions: filter bar */
 .filter-bar {
@@ -930,6 +933,11 @@ label:first-child { margin-top: 0; }
 }
 .nw-item-row .nwItemRemove:hover:not(:disabled) { color: var(--red); }
 .nw-item-row .nwItemRemove:disabled { opacity: 0.3; cursor: default; }
+.nw-item-group-label {
+  font-size: 10.5px; font-weight: 700; color: var(--text3);
+  text-transform: uppercase; letter-spacing: .03em; margin: 12px 0 6px;
+}
+.nw-item-group-label:first-child { margin-top: 0; }
 
 /* privacy toggle — blur net worth / balance figures for shoulder-surfing */
 .privacy-toggle-btn {
@@ -1002,6 +1010,7 @@ label:first-child { margin-top: 0; }
 /* analysis: charts + insights + heatmap */
 .chart-box { position: relative; height: 220px; }
 .chart-box-donut { height: 240px; }
+.chart-box.large { height: 420px; }
 
 .insight-row { padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
 .insight-row:last-child { border-bottom: none; }
@@ -1035,16 +1044,18 @@ label:first-child { margin-top: 0; }
 
 /* dashboard: net worth widget — tap to open the quick-log popup */
 .networth-widget-body { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+.dash-widget[data-widget="goals"] .card { cursor: pointer; }
 .networth-widget-icon { font-size: 24px; flex-shrink: 0; }
 .networth-widget-main { flex: 1; min-width: 0; }
 .networth-widget-label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: .03em; }
 .networth-widget-tap { color: var(--accent); text-transform: none; letter-spacing: 0; }
 .networth-widget-val { font-size: 20px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
-.networth-widget-split { font-size: 12px; color: var(--text2); margin-top: 3px; }
 .networth-widget-delta, .networth-widget-date { font-size: 11.5px; color: var(--text3); margin-top: 2px; }
 
 /* quick net worth log popup */
-.nwq-box { max-width: 420px; }
+.nwq-box { max-width: 560px; }
+.modal-box-lg { max-width: 640px; max-height: 88vh; overflow-y: auto; }
+.modal-box-xl { max-width: 880px; max-height: 88vh; overflow-y: auto; }
 .nwq-title { font-weight: 700; font-size: 16px; }
 .nwq-sub { font-size: 12.5px; color: var(--text2); margin-top: 2px; margin-bottom: 14px; }
 .nwq-date-label {
@@ -1098,6 +1109,18 @@ label:first-child { margin-top: 0; }
 /* hidden on mobile bottom tab bar — no room, and it's desktop-app branding anyway.
    Re-enabled inside the desktop media query below. */
 .tabbar-footer { display: none; }
+.tabbar-brand { display: none; }
+.nav-label { display: none; }
+.sidebar-footer { display: none; }
+.tab-desktop-only { display: none; }
+
+.settings-link-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-bottom: 16px; cursor: pointer;
+}
+.settings-link-row .btn.secondary { width: auto; flex-shrink: 0; }
+.settings-link-title { font-size: 14px; font-weight: 700; }
+.settings-link-meta { font-size: 12px; color: var(--text2); margin-top: 2px; }
 
 /* desktop: sidebar nav instead of bottom tab bar, wider readable column instead of a lonely mobile-width strip.
    Placed last so it wins the cascade over the unconditional rules above at matching widths. */
@@ -1135,10 +1158,28 @@ label:first-child { margin-top: 0; }
     border-top: none;
     border-right: 1px solid var(--border);
     gap: 4px;
+    overflow-y: auto;
     /* the mobile bar's --shadow-lg falls downward, wrong direction for a
        left-edge sidebar — the border above already separates it from content */
     box-shadow: none;
   }
+  .nav-label {
+    display: block;
+    font-size: 10.5px; font-weight: 700; color: var(--text3);
+    text-transform: uppercase; letter-spacing: .04em;
+    margin: 14px 12px 4px;
+  }
+  .nav-label:first-of-type { margin-top: 4px; }
+  .tabbar-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 12px 16px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .tabbar-brand-logo { width: 26px; height: 26px; flex-shrink: 0; display: block; }
+  .tabbar-brand-name { font-size: 17px; font-weight: 800; letter-spacing: -.01em; color: var(--text); }
   .tab {
     flex: 0 0 auto;
     flex-direction: row;
@@ -1149,11 +1190,32 @@ label:first-child { margin-top: 0; }
     font-size: 14px;
     margin: 0;
   }
+  .tab-desktop-only { display: flex; }
   .tab:hover { background: var(--accent-weak); }
   .center-screen { max-width: 420px; margin: 0 auto; }
-  .tabbar-footer {
+  .sidebar-footer {
     display: block;
     margin-top: auto;
+    padding-top: 12px;
+  }
+  .sidebar-month-summary, .sidebar-nw-panel {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 12px; margin: 0 2px 10px;
+  }
+  .sms-label { font-size: 10px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 6px; }
+  .sms-row { display: flex; justify-content: space-between; font-size: 12px; padding: 2px 0; }
+  .sms-key { color: var(--text2); }
+  .sms-val { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .sms-val.pos { color: var(--green); }
+  .sms-val.neg { color: var(--red); }
+  .sms-divider { height: 1px; background: var(--border); margin: 4px 0; }
+  .sidebar-nw-total { font-size: 16px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .sidebar-nw-panel .privacy-wrap { min-height: 22px; }
+  .sidebar-nw-panel .privacy-wrap.active .sidebar-nw-total { filter: blur(6px); user-select: none; }
+  .sidebar-nw-panel .privacy-overlay { font-size: 11px; justify-content: flex-start; }
+  .tabbar-footer {
+    display: block;
+    margin-top: 0;
     padding: 10px 12px 0;
     font-size: 11px;
     color: var(--text3);

@@ -12,7 +12,7 @@ export function openMarkPaidDialog({ item, onSaved }) {
 
   const overlay = document.createElement('div')
   overlay.className = 'confirm-overlay'
-  document.getElementById('app').appendChild(overlay)
+  document.body.appendChild(overlay)
 
   function render() {
     const progress = item.installments_total

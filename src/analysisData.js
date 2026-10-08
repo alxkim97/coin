@@ -289,6 +289,36 @@ export function computeProjection(txns, networth, months = 12) {
   return { phase, phaseIcon, avgIncome, avgExpense, avgNet, hasCheckin: !!latestPoint, points }
 }
 
+// Per-fund (subcategory) view of Investment-category expense transactions —
+// all-time total per fund (used as "cost basis to date," the calculator's
+// starting balance) plus a trailing-3-month average monthly contribution
+// (same averaging window computeProjection uses), used to prefill a sensible
+// default contribution per fund instead of hardcoding today's figures, which
+// would just drift out of date. Transactions with no subcategory are folded
+// into one "Uncategorized" row rather than dropped, so money logged without
+// a vendor note still counts toward the total.
+export function investmentContributions(txns, avgMonths = 3) {
+  const now = new Date()
+  const recentKeys = new Set()
+  for (let i = 1; i <= avgMonths; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    recentKeys.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+  }
+  const byFund = new Map()
+  for (const t of txns) {
+    if (t.type !== 'expense' || t.category !== 'Investment') continue
+    const label = (t.subcategory || '').trim() || 'Uncategorized'
+    const key = label.toLowerCase()
+    if (!byFund.has(key)) byFund.set(key, { label, total: 0, recentSum: 0 })
+    const entry = byFund.get(key)
+    entry.total += Number(t.amount)
+    if (recentKeys.has(t.date.slice(0, 7))) entry.recentSum += Number(t.amount)
+  }
+  return [...byFund.values()]
+    .map(f => ({ subcategory: f.label, total: f.total, avgMonthly: f.recentSum / avgMonths }))
+    .sort((a, b) => b.total - a.total)
+}
+
 // All-time highlight stats — separate from generateInsights (which is a
 // rolling 30-day behavior read); these are "personal bests" that only move
 // when a new record is actually set, so they don't churn month to month.
