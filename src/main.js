@@ -40,6 +40,10 @@ onDesktopViewChange(() => render())
 // the time the event actually fires, well after boot() has run).
 window.electronAPI?.onNavigate?.((view) => setView(view))
 
+// iOS Safari ignores user-scalable=no, so block pinch-zoom via its gesture
+// events (Safari-only; no-op on desktop/Android, where the meta tag suffices).
+for (const ev of ['gesturestart', 'gesturechange']) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false })
+
 const now = new Date()
 const state = {
   session: null,
