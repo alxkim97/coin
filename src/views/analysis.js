@@ -1,7 +1,7 @@
 import { Chart, registerables } from 'chart.js'
 import { dailySpend, categoryBreakdown, monthlyRollup, heatmapData, generateInsights, computeProjection, computePersonalRecords, upcomingBills } from '../analysisData.js'
 import { getAchievementDefs } from '../achievements.js'
-import { formatMoney, localISO, toast, formatDateDMY, escapeHtml } from '../helpers.js'
+import { formatMoney, localISO, toast, formatDateDMY, escapeHtml, formatMoneyAxis } from '../helpers.js'
 import { isPrivacyMode, setPrivacyMode, syncPrivacyButton, privacyOverlayHtml } from '../privacy.js'
 import { isDesktopView } from '../platform.js'
 import { renderInvestmentDepth, renderNetWorthSummaryCard } from './analysisInvestments.js'
@@ -246,7 +246,7 @@ function renderTrendChart(container, txns) {
       },
       scales: {
         x: { ticks: { color: text3, font: { size: 10 }, maxTicksLimit: 8 }, grid: { display: false } },
-        y: { ticks: { color: text3, font: { size: 10 }, callback: v => formatMoney(v) }, grid: { color: grid } },
+        y: { ticks: { color: text3, font: { size: 10 }, callback: v => formatMoneyAxis(v) }, grid: { color: grid } },
       },
     },
   })
@@ -318,7 +318,7 @@ function renderRollupChart(container, txns) {
       },
       scales: {
         x: { ticks: { color: text3, font: { size: 10 } }, grid: { display: false } },
-        y: { ticks: { color: text3, font: { size: 10 }, callback: v => formatMoney(v) }, grid: { color: grid } },
+        y: { ticks: { color: text3, font: { size: 10 }, callback: v => formatMoneyAxis(v) }, grid: { color: grid } },
       },
     },
   })

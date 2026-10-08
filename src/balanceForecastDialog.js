@@ -1,6 +1,6 @@
 import { Chart } from 'chart.js'
 import { computeProjection } from './analysisData.js'
-import { formatMoney } from './helpers.js'
+import { formatMoney, formatMoneyAxis } from './helpers.js'
 import { isPrivacyMode, setPrivacyMode, privacyToggleHtml, syncPrivacyButton, privacyOverlayHtml } from './privacy.js'
 import { icon } from './icons.js'
 
@@ -106,7 +106,7 @@ export function openBalanceForecast({ txns, networth }) {
         },
         scales: {
           x: { ticks: { color: text3, font: { size: 10 }, maxTicksLimit: 7 }, grid: { display: false } },
-          y: { ticks: { color: text3, font: { size: 10 }, callback: v => formatMoney(v) }, grid: { color: grid } },
+          y: { ticks: { color: text3, font: { size: 10 }, callback: v => formatMoneyAxis(v) }, grid: { color: grid } },
         },
       },
     })

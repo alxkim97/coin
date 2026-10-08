@@ -1,6 +1,6 @@
 import { Chart } from 'chart.js'
 import { investmentContributions } from './analysisData.js'
-import { formatMoney, escapeHtml } from './helpers.js'
+import { formatMoney, escapeHtml, formatMoneyAxis } from './helpers.js'
 
 // Chart.js's registerables are already registered once, by analysis.js on
 // module load — this file only needs the Chart constructor itself, same
@@ -215,7 +215,7 @@ export function openInvestmentCalculator({ txns }) {
         },
         scales: {
           x: { ticks: { color: text3, font: { size: 10 }, maxTicksLimit: 10 }, grid: { display: false } },
-          y: { ticks: { color: text3, font: { size: 10 }, callback: v => formatMoney(v) }, grid: { color: grid } },
+          y: { ticks: { color: text3, font: { size: 10 }, callback: v => formatMoneyAxis(v) }, grid: { color: grid } },
         },
       },
     })

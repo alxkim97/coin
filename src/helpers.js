@@ -19,6 +19,15 @@ export function formatMoney(n) {
   return '฿' + v.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 }
 
+// Short money for chart axes (฿90k, ฿1.2M) — full figures clip on phone-width
+// y-axes and crowd them on desktop. Tooltips keep using formatMoney.
+export function formatMoneyAxis(n) {
+  const v = Number(n) || 0, a = Math.abs(v), s = v < 0 ? '-' : ''
+  if (a >= 1e6) return s + '฿' + +(a / 1e6).toFixed(1) + 'M'
+  if (a >= 1e3) return s + '฿' + +(a / 1e3).toFixed(a >= 1e4 ? 0 : 1) + 'k'
+  return s + '฿' + a
+}
+
 // Formats a Date using its LOCAL year/month/day — never use .toISOString()
 // for this. toISOString() converts to UTC first, which silently shifts the
 // date backward by a day for anyone in a positive-UTC-offset timezone

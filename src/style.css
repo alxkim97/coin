@@ -313,6 +313,9 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
    and a DD/MM/YY overlay sits on top; the native input (and its calendar
    picker icon) stays fully interactive underneath. */
 .date-field-dmy { position: relative; }
+/* iOS gives date inputs an intrinsic min-width, so width:100% + padding pushed
+   the field past the screen edge */
+input[type="date"] { -webkit-appearance: none; appearance: none; min-width: 0; display: block; }
 .date-field-dmy input[type="date"] {
   color: transparent;
 }
