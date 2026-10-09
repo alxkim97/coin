@@ -358,7 +358,11 @@ function renderImmediate() {
     renderAuth(app, {
       onSignedIn: async () => {
         state.session = await getSession()
-        await refreshAndRender('dashboard')
+        state.loading = true
+        render()
+        await loadEverything()
+        state.loading = false
+        setView('dashboard')
       },
     })
     return
@@ -654,6 +658,22 @@ function renderImmediate() {
 // never lost (it reloads when you next switch away instead; see swUpdate.js)
 initUpdateReload({ isBusy: () => state.view === 'add' })
 
+// Everything a fresh session needs — shared by app start and sign-in, so a
+// sign-out → sign-in (which clears all of state) reloads every section, not
+// just transactions and budgets.
+async function loadEverything() {
+  try {
+    await loadData()
+    await processRecurring()
+    await loadNetWorth()
+    await loadGoals()
+    await loadProjectionEvents()
+    await loadDelegates()
+  } catch (e) {
+    toast(e.message || 'Failed to load data')
+  }
+}
+
 async function boot() {
   state.session = await getSession()
   onAuthChange((session) => {
@@ -661,18 +681,7 @@ async function boot() {
     if (!session && state.session) { signedOut(); render(); return }
     state.session = session
   })
-  if (state.session) {
-    try {
-      await loadData()
-      await processRecurring()
-      await loadNetWorth()
-      await loadGoals()
-      await loadProjectionEvents()
-      await loadDelegates()
-    } catch (e) {
-      toast(e.message || 'Failed to load data')
-    }
-  }
+  if (state.session) await loadEverything()
   state.loading = false
   render()
   if (state.session) sweepReceiptsWeekly()
