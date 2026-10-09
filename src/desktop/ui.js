@@ -191,6 +191,28 @@ export function baseOptions({ money = true, legend = true, stacked = false, yTic
 // tight grouped bars — "tighter bar spacing" ask: wide bars, small gaps
 export const BAR = { borderRadius: 3, borderSkipped: false, categoryPercentage: 0.78, barPercentage: 0.92, maxBarThickness: 34 }
 
+// Ledger's original income/expense chart: income bars up, expenses as
+// upside-down red bars from the same zero line, sharing one column per
+// month — so there's no gap between a month's pair, and wide bars.
+export function incomeExpenseConfig(labels, income, expense, extra = []) {
+  const t = chartTheme()
+  const opts = baseOptions({ stacked: true, yTicks: v => formatMoneyAxis(Math.abs(v)) })
+  opts.plugins.tooltip.callbacks = { label: ctx => ` ${ctx.dataset.label}: ${formatMoney(Math.abs(ctx.parsed.y))}` }
+  opts.scales.y.grid = { color: ctx => ctx.tick.value === 0 ? cssVar('--border-2') : t.grid, lineWidth: ctx => ctx.tick.value === 0 ? 1.5 : 1 }
+  return {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Income', data: income, backgroundColor: t.green, borderRadius: 3, borderSkipped: false, categoryPercentage: 0.86, barPercentage: 0.94, maxBarThickness: 46 },
+        { label: 'Expenses', data: expense.map(v => -v), backgroundColor: t.red, borderRadius: 3, borderSkipped: false, categoryPercentage: 0.86, barPercentage: 0.94, maxBarThickness: 46 },
+        ...extra,
+      ],
+    },
+    options: opts,
+  }
+}
+
 export const PALETTE = ['--chart-1', '--chart-2', '--chart-3', '--chart-4', '--chart-5', '--chart-6', '--chart-7', '--chart-8']
 export function paletteColor(i, name) {
   return name === 'Other' ? cssVar('--chart-other') : cssVar(PALETTE[i % PALETTE.length])

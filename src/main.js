@@ -20,7 +20,7 @@ import { isPrivacyMode, setPrivacyMode, privacyToggleHtml, syncPrivacyButton, pr
 import { effectiveDate, monthRange } from './helpers.js'
 import { renderTopbar } from './desktop/topbar.js'
 import { renderDashboardDesktop } from './desktop/dashboard.js'
-import { renderHistoryDesktop, setHistorySearch, getHistorySearch, applyHistorySearch } from './desktop/history.js'
+import { renderHistoryDesktop, setHistorySearch, getHistorySearch, applyHistorySearch, renderRecentlyAdded } from './desktop/history.js'
 import { renderBudgetDesktop } from './desktop/budget.js'
 import { renderAnalysisDesktop } from './desktop/analysis.js'
 import { renderSettingsDesktop } from './desktop/settings.js'
@@ -53,6 +53,26 @@ window.electronAPI?.onNavigate?.((view) => setView(view))
 // iOS Safari ignores user-scalable=no, so block pinch-zoom via its gesture
 // events (Safari-only; no-op on desktop/Android, where the meta tag suffices).
 for (const ev of ['gesturestart', 'gesturechange']) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false })
+
+// Escape closes the topmost popup. Every popup already closes on a click on
+// its dimmed backdrop (each one checks e.target === overlay), so this replays
+// exactly that click — each dialog runs its own close path (confirmDialog
+// resolves false, etc.) instead of the overlay being yanked out from under it.
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return
+  const overlays = document.querySelectorAll('.confirm-overlay')
+  const top = overlays[overlays.length - 1]
+  if (top) top.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+})
+
+// Ledger's logo gimmick: click the sidebar logo to cycle it. Index 0 is
+// Coin's own mark; the rest are emoji, remembered per device.
+const LOGO_FACES = [null, '🪙', '💰', '💸', '💵', '🤑', '💎', '📈', '🐷']
+let logoIdx = Number(localStorage.getItem('coin_logo_idx') || 0) % LOGO_FACES.length
+function logoFaceHtml() {
+  const face = LOGO_FACES[logoIdx]
+  return face ? `<span class="tabbar-brand-emoji">${face}</span>` : '<img src="./favicon.svg" alt="" />'
+}
 
 const now = new Date()
 const state = {
@@ -315,9 +335,15 @@ function renderImmediate() {
       onEditTxn: (txn) => setView('add', { editingTxn: txn }),
     })
   } else if (state.view === 'add') {
-    // desktop frames Coin's own Add form in a single Ledger card
+    // desktop: the form re-renders its own host on every change, so the
+    // "Recently added" table lives in a sibling element below it
     const host = desktop ? document.createElement('div') : screen
-    if (desktop) { host.className = 'd-add-frame'; screen.appendChild(host) }
+    if (desktop) {
+      screen.appendChild(host)
+      const recent = document.createElement('div')
+      screen.appendChild(recent)
+      renderRecentlyAdded(recent, state.txns, (txn) => setView('add', { editingTxn: txn }))
+    }
     renderQuickAdd(host, {
       editingTxn: state.editingTxn,
       recurring: state.recurring,
@@ -384,7 +410,7 @@ function renderImmediate() {
   // flex row is exactly what it was before; desktop gives it a real box
   tabbar.innerHTML = `
     <div class="tabbar-brand">
-      <img src="./favicon.svg" alt="" class="tabbar-brand-logo" />
+      <button type="button" class="tabbar-brand-logo" id="brandLogo" title="Click to change the icon" aria-label="Change logo icon">${logoFaceHtml()}</button>
       <div><span class="tabbar-brand-name">Coin</span>${desktop ? `<span class="tabbar-brand-sub">v${__APP_VERSION__} · Alex Kim</span>` : ''}</div>
     </div>
     <div class="tabbar-nav"${desktop ? '' : ' style="display:contents"'}>
@@ -406,6 +432,16 @@ function renderImmediate() {
   tabbar.querySelectorAll('.tab').forEach(btn => {
     btn.onclick = () => { state.customizing = false; setView(btn.dataset.view) }
   })
+  const brandLogo = tabbar.querySelector('#brandLogo')
+  brandLogo.onclick = () => {
+    if (!desktop) return
+    logoIdx = (logoIdx + 1) % LOGO_FACES.length
+    try { localStorage.setItem('coin_logo_idx', String(logoIdx)) } catch { /* storage unavailable — resets next launch */ }
+    brandLogo.innerHTML = logoFaceHtml()
+    brandLogo.classList.remove('spin')
+    void brandLogo.offsetWidth // restart the pop animation on rapid clicks
+    brandLogo.classList.add('spin')
+  }
 
   // Desktop-sidebar-only footer panel (Ledger-inspired): a mini this-month
   // summary + net worth snapshot, built only when the sidebar is actually

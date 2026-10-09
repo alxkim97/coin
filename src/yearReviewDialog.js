@@ -64,7 +64,7 @@ function reviewContentHtml(review) {
       <div class="nw-hero-trend">saved in ${review.year}${review.savingsRate != null ? ` · ${review.savingsRate.toFixed(0)}% savings rate` : ''}</div>
     </div>
 
-    <div class="summary-grid" style="margin-bottom:20px">
+    <div class="summary-grid yr-summary" style="margin-bottom:20px">
       <div class="summary-tile">
         <div class="label">Income</div>
         <div class="value income">${formatMoney(review.totalIncome)}</div>

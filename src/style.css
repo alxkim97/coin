@@ -1318,3 +1318,9 @@ label:first-child { margin-top: 0; }
     border-top: 1px solid var(--border);
   }
 }
+
+/* Year in review: each tile has a third line (the "vs last year" badge) —
+   the 2-row subgrid made it overlap the value, so give it a third row */
+.yr-summary { grid-template-rows: auto auto auto; }
+.yr-summary .summary-tile { grid-row: span 3; }
+.yr-summary .holding-change { font-size: 11px; margin-top: 4px; }

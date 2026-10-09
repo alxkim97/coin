@@ -287,3 +287,16 @@ function drawCalendar(container, opts) {
   const dayTable = dayEl.querySelector('#hDayTable')
   if (dayTable) wireTxnTable(dayTable, dayTxns, { onEdit: opts.onEditTxn, onDelete: t => deleteTxn(t, opts.txns, () => drawCalendar(container, opts)) })
 }
+
+// Add page (desktop): the last few entries by when they were logged, so a
+// duplicate is easy to spot before saving another
+export function renderRecentlyAdded(el, txns, onEdit) {
+  const recent = [...txns].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '') || b.date.localeCompare(a.date)).slice(0, 6)
+  if (!recent.length) { el.innerHTML = ''; return }
+  el.innerHTML = `
+    <div class="d-table-card">
+      <div class="d-toolbar"><div class="d-toolbar-title">Recently added <small>latest ${recent.length} · click one to edit</small></div></div>
+      ${txnTableHtml(recent, { groups: false })}
+    </div>`
+  wireTxnTable(el, recent, { onEdit })
+}

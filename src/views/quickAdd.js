@@ -167,11 +167,13 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
       </div>
     `
 
-    container.innerHTML = `
+    const headerHtml = `
       <div class="top-bar">
         <h1>${isEdit ? 'Edit transaction' : 'Add transaction'}</h1>
       </div>
+    `
 
+    const mainHtml = `
       <div class="toggle-row" id="typeToggle">
         <button data-type="expense" class="${type === 'expense' ? 'active expense' : ''}">Expense</button>
         <button data-type="income" class="${type === 'income' ? 'active income' : ''}">Income</button>
@@ -207,17 +209,31 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
 
       <label>Date</label>
       ${dmyDateFieldHtml('dateInput', date)}
+    `
 
-      ${mobile ? `
-        <button type="button" class="link-btn" id="moreDetailsBtn" style="margin-top:18px">${showMoreDetails ? 'Fewer details' : 'More details'}</button>
-        <div id="moreDetailsBlock" ${showMoreDetails ? '' : 'hidden'}>${moreDetailsHtml}</div>
-      ` : moreDetailsHtml}
-
-      <div style="margin-top:22px;display:flex;flex-direction:column;gap:10px">
+    const actionsHtml = `
+      <div style="margin-top:22px;display:flex;flex-direction:column;gap:10px" class="qa-actions">
         <button class="btn" id="saveBtn">${isEdit ? 'Save changes' : 'Add transaction'}</button>
         ${!isEdit ? '<button class="btn secondary" id="saveAndAddBtn">Save & add another</button>' : ''}
         ${isEdit ? '<button class="btn secondary" id="cancelBtn">Cancel</button>' : ''}
         ${isEdit ? '<button class="btn danger" id="deleteBtn">Delete</button>' : ''}
+      </div>
+    `
+
+    // Desktop lays the form out in two columns (fast-entry path + Save on
+    // the left, the occasional fields on the right) so nothing needs a
+    // scroll; mobile keeps its single column with the "More details" toggle.
+    container.innerHTML = mobile ? `
+      ${headerHtml}
+      ${mainHtml}
+      <button type="button" class="link-btn" id="moreDetailsBtn" style="margin-top:18px">${showMoreDetails ? 'Fewer details' : 'More details'}</button>
+      <div id="moreDetailsBlock" ${showMoreDetails ? '' : 'hidden'}>${moreDetailsHtml}</div>
+      ${actionsHtml}
+    ` : `
+      ${headerHtml}
+      <div class="qa-desk">
+        <div class="qa-col">${mainHtml}${actionsHtml}</div>
+        <div class="qa-col qa-side"><div class="qa-side-title">Details <span>optional</span></div>${moreDetailsHtml}</div>
       </div>
     `
 

@@ -14,8 +14,8 @@ import { addTransaction, deleteSuggestion } from '../supabase.js'
 import { icon, categoryIcon } from '../icons.js'
 import { isPrivacyMode, privacyOverlayHtml } from '../privacy.js'
 import {
-  headHtml, kpiHtml, barHtml, statusClass, cardHtml, emptyCardHtml, renderChart, baseOptions, BAR,
-  chartTheme, donutConfig, legendHtml, paletteColor, monthKeysEnding, shortMonth,
+  headHtml, kpiHtml, barHtml, statusClass, cardHtml, emptyCardHtml, renderChart, incomeExpenseConfig,
+  donutConfig, legendHtml, paletteColor, monthKeysEnding, shortMonth,
 } from './ui.js'
 import { txnTableHtml, wireTxnTable } from './history.js'
 
@@ -100,7 +100,7 @@ export function renderDashboardDesktop(container, opts) {
     <div class="d-kpis">
       ${kpiHtml({ kind: 'income', icon: 'trendingUp', label: 'Income', value: formatMoney(income), valueClass: 'pos', sub: `${incomeTx.length} transaction${incomeTx.length === 1 ? '' : 's'}` })}
       ${kpiHtml({ kind: 'expense', icon: 'trendingDown', label: 'Expenses', value: formatMoney(expense), valueClass: 'neg', sub: `${expenseTx.length} transaction${expenseTx.length === 1 ? '' : 's'}` })}
-      ${kpiHtml({ kind: 'net', icon: 'dollar', label: 'Net balance', value: formatMoney(net), valueClass: net >= 0 ? 'pos' : 'neg', sub: income ? `${net >= 0 ? 'Surplus' : 'Deficit'} · ${Math.round(net / income * 100)}% of income saved` : (net >= 0 ? 'Surplus' : 'Deficit') })}
+      ${kpiHtml({ kind: net >= 0 ? 'green' : 'expense', icon: 'dollar', label: 'Net balance', value: formatMoney(net), valueClass: net >= 0 ? 'pos' : 'neg', sub: income ? `${net >= 0 ? 'Surplus' : 'Deficit'} · ${Math.round(net / income * 100)}% of income saved` : (net >= 0 ? 'Surplus' : 'Deficit') })}
       ${kpiHtml({
         kind: 'budget', icon: 'budget', label: 'Budget used',
         value: totalLimit ? `${Math.round(budgetPct)}%` : '—',
@@ -207,7 +207,7 @@ function buildWidgets({ txns, budgets, activeBudgets, range, spentByCategory, sp
   w.goals = goals?.length
     ? { body: goals.map(g => {
         const p = goalProgress(g, networth)
-        return `<div class="d-meter"><div class="d-meter-top"><span class="n">${escapeHtml(g.name)}</span><span class="v">${formatMoney(p.current)} <small>/ ${formatMoney(p.target)}</small></span></div>${barHtml(p.pct, p.pct >= 100 ? '' : 'accent')}</div>`
+        return `<div class="d-meter"><div class="d-meter-top"><span class="n">${escapeHtml(g.name)}</span><span class="v">${formatMoney(p.current)} <small>/ ${formatMoney(p.target)}</small></span></div>${barHtml(p.pct, p.pct >= 100 ? 'green' : 'gold')}</div>`
       }).join('') }
     : { empty: 'No goals yet — click to add one' }
 
@@ -366,18 +366,7 @@ function drawTrend(container, txns, year, month) {
     if (t.type === 'income') inc[i] += Number(t.amount)
     else exp[i] += Number(t.amount)
   }
-  const c = chartTheme()
-  renderChart('dash-trend', container.querySelector('#dTrend'), {
-    type: 'bar',
-    data: {
-      labels: keys.map(shortMonth),
-      datasets: [
-        { label: 'Income', data: inc, backgroundColor: c.green, ...BAR },
-        { label: 'Expenses', data: exp, backgroundColor: c.red, ...BAR },
-      ],
-    },
-    options: baseOptions(),
-  })
+  renderChart('dash-trend', container.querySelector('#dTrend'), incomeExpenseConfig(keys.map(shortMonth), inc, exp))
 }
 
 function drawDonut(container, catRows) {
