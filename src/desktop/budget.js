@@ -6,12 +6,12 @@ import { upsertBudget, savePushSubscription } from '../supabase.js'
 import { formatMoney, toast, monthLabel, suggestionBasis, urlBase64ToUint8Array, escapeHtml } from '../helpers.js'
 import { icon, categoryIcon } from '../icons.js'
 import { headHtml, kpiHtml, barHtml, statusClass, cardHtml, renderChart, donutConfig, legendHtml, cssVar, monthKey, shortMonth, catBadge, catColor } from './ui.js'
+import { withinHistory } from '../budgetData.js' // shared with the phone Budget page
 
 // same public VAPID key as views/budget.js — the public half is safe to ship
 // and must match VAPID_PRIVATE_KEY on the server (api/check-budget-alerts.js)
 const VAPID_PUBLIC_KEY = 'BIpc_gh2sKjZIJeIs6idrop8Tth8SROQMyxz-fLCzj-5lXuO8axFF4p9Bfyv_n9ahV64SkR4Shit-NPiB23SH8U'
 const TYPE_COLOR = { 'Fixed Essential': '--chart-1', 'Variable Essential': '--chart-3', Investment: '--chart-4', Discretionary: '--chart-2' }
-const HISTORY_MONTHS = 6
 
 let editing = false
 let draft = {} // category → typed limit while editing
@@ -186,34 +186,6 @@ function suggestionCardHtml(basis, limits) {
         </tr>`).join('')}</tbody>
       </table></div>` : ''}
     </div>`
-}
-
-// Up to HISTORY_MONTHS months with data, ending at the selected month, each
-// judged against today's limits (limits aren't versioned, so that's the
-// only yardstick there is — said so under the grid).
-function withinHistory(txns, limits, year, month) {
-  const cats = Object.keys(limits).filter(c => limits[c] > 0 && EXPENSE_CATEGORIES.some(x => x.name === c))
-  const spend = {}
-  for (const t of txns) {
-    if (t.type !== 'expense') continue
-    const k = t.date.slice(0, 7)
-    ;(spend[k] ||= {})[t.category] = (spend[k][t.category] || 0) + Number(t.amount)
-  }
-  const curKey = monthKey(new Date())
-  const months = []
-  for (let i = 0; i < 18 && months.length < HISTORY_MONTHS; i++) {
-    const k = monthKey(new Date(year, month - i, 1))
-    if (k <= curKey && spend[k]) months.push(k)
-  }
-  months.reverse()
-  const limTotal = cats.reduce((sum, c) => sum + limits[c], 0)
-  let within = 0, judged = 0
-  const totals = months.map(k => {
-    const s = cats.reduce((sum, c) => sum + (spend[k]?.[c] || 0), 0)
-    if (k !== curKey) { judged++; if (s <= limTotal) within++ }
-    return { k, s }
-  })
-  return { cats, months, spend, totals, limTotal, within, judged }
 }
 
 function historyHtml(h, limits) {

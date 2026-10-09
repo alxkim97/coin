@@ -15,7 +15,7 @@ import { monthPickerHtml, wireMonthPicker } from '../monthPicker.js'
 const RANGES = [1, 3, 6, 12]
 
 export function renderDashboard(container, opts) {
-  const { txns, budgets, year, month, range, onMonthChange, onRangeChange, networth, onNetWorthChanged, recurring, onBillsChanged, suggestions, onSuggestionsChanged, goals, onGoalsChanged } = opts
+  const { txns, budgets, year, month, range, onMonthChange, onRangeChange, networth, onNetWorthChanged, recurring, onBillsChanged, suggestions, onSuggestionsChanged, goals, onGoalsChanged, customizing } = opts
   const { from, to } = rangeWindow(year, month, range)
   const rangeTxns = txns.filter(t => { const d = effectiveDate(t); return d >= from && d <= to })
 
@@ -45,9 +45,12 @@ export function renderDashboard(container, opts) {
     .filter(b => b.monthly_limit > 0 && validCategoryNames.has(b.category))
     .sort((a, b) => BUDGET_TYPE_ORDER.indexOf(a.budget_type) - BUDGET_TYPE_ORDER.indexOf(b.budget_type))
 
+  // `empty` = the one-line text a widget collapses to when it has nothing to
+  // show, instead of a full card holding a single sentence
   const widgets = {
     budget: {
       title: `Budget vs actual${range > 1 ? ` (×${range} mo.)` : ''}`,
+      empty: activeBudgets.length ? null : 'No limits set',
       body: activeBudgets.length === 0 ? '<div class="empty-state">No budgets set yet. Add limits in the Budget tab.</div>' : activeBudgets.map(b => {
         const limit = b.monthly_limit * range
         const spent = spentByCategory[b.category] || 0
@@ -66,6 +69,7 @@ export function renderDashboard(container, opts) {
     },
     category: {
       title: 'By category',
+      empty: Object.keys(spentByCategory).length ? null : 'No expenses this period',
       body: Object.keys(spentByCategory).length === 0 ? '<div class="empty-state">No expenses in this period.</div>' :
         Object.entries(spentByCategory).sort((a, b) => b[1] - a[1]).map(([cat, amt]) => `
           <div class="budget-row">
@@ -79,6 +83,7 @@ export function renderDashboard(container, opts) {
     },
     vendors: {
       title: 'Top vendors',
+      empty: topVendors.length ? null : 'No vendor notes this period',
       body: topVendors.length === 0 ? '<div class="empty-state">No vendor/note data in this period.</div>' :
         topVendors.map(([name, d], i) => `
           <div class="vendor-row">
@@ -95,24 +100,30 @@ export function renderDashboard(container, opts) {
     },
     networth: {
       title: 'Net worth',
+      empty: netWorthTimeline(networth).length ? null : 'No check-ins yet — tap to log one',
       body: renderNetWorthWidgetBody(networth),
     },
     bills: {
       title: 'Bills due',
+      empty: billsDue(recurring).length ? null : 'Nothing due',
       body: renderBillsDueWidgetBody(recurring),
     },
     suggestions: {
       title: 'Suggestions',
+      empty: suggestions?.length ? null : 'None right now',
       body: renderSuggestionsWidgetBody(suggestions),
     },
     goals: {
       title: 'Goals',
+      empty: goals?.length ? null : 'No goals yet — tap to add one',
       body: renderGoalsWidgetBody(goals, networth),
     },
   }
 
   const order = getOrder()
-  const collapsed = getCollapsed(!isDesktopView())
+  // the phone's saved "collapsed" set now means hidden from Home; widgets are
+  // shown/hidden and reordered only inside Customize, not via per-widget controls
+  const hidden = getCollapsed(!isDesktopView())
 
   container.innerHTML = `
     <div class="top-bar"><h1>Dashboard</h1><button class="top-bar-btn" id="openSettings" aria-label="Settings">${icon('settings', 22)}</button></div>
@@ -138,9 +149,20 @@ export function renderDashboard(container, opts) {
       </div>
     </div>
 
-    <div id="dashWidgets">
-      ${order.map(id => widgetRowHtml(id, widgets[id], collapsed.has(id))).join('')}
-    </div>
+    ${customizing ? `
+      <div class="card customize-bar">
+        <div>Drag ${icon('grip', 13)} to reorder · tap ${icon('eye', 13)} to show or hide</div>
+        <button class="btn" id="doneCustomizing">Done</button>
+      </div>
+      <div id="dashWidgets" class="customizing">
+        ${order.map(id => customizeRowHtml(id, widgets[id], hidden.has(id))).join('')}
+      </div>
+    ` : `
+      <div id="dashWidgets">
+        ${order.filter(id => !hidden.has(id)).map(id => widgetRowHtml(id, widgets[id])).join('')}
+      </div>
+      <button class="link-btn dash-customize" id="startCustomizing">${icon('layers', 15)} Customize Home</button>
+    `}
   `
 
   container.querySelector('#rangeToggle').querySelectorAll('button').forEach(btn => {
@@ -151,15 +173,21 @@ export function renderDashboard(container, opts) {
   container.querySelector('#openSettings').onclick = () => opts.onNavigate?.('settings')
 
   const widgetsEl = container.querySelector('#dashWidgets')
-  widgetsEl.querySelectorAll('.widget-toggle').forEach(btn => {
-    btn.onclick = () => { toggleCollapsed(btn.dataset.widget, !isDesktopView()); renderDashboard(container, opts) }
-  })
-  setupDragReorder(widgetsEl)
+  if (customizing) {
+    container.querySelector('#doneCustomizing').onclick = () => opts.onDoneCustomizing?.()
+    widgetsEl.querySelectorAll('.customize-eye').forEach(btn => {
+      btn.onclick = () => { toggleCollapsed(btn.dataset.widget, !isDesktopView()); renderDashboard(container, opts) }
+    })
+    setupDragReorder(widgetsEl)
+    return // nothing else is tappable while customizing
+  }
+  container.querySelector('#startCustomizing').onclick = () => opts.onStartCustomizing?.()
 
-  widgetsEl.querySelector('[data-widget="networth"] .networth-widget-body')?.addEventListener('click', () => {
+  // the full card when there's data, the one-line row when empty — both open the popup
+  widgetsEl.querySelector('[data-widget="networth"] .networth-widget-body, [data-widget="networth"].dash-widget-empty')?.addEventListener('click', () => {
     openNetWorthCheckins({ networth, onNetWorthChanged })
   })
-  widgetsEl.querySelector('[data-widget="goals"] .card')?.addEventListener('click', () => {
+  widgetsEl.querySelector('[data-widget="goals"] .card, [data-widget="goals"].dash-widget-empty')?.addEventListener('click', () => {
     openGoals({ goals: goals || [], networth, onGoalsChanged })
   })
 
@@ -328,15 +356,28 @@ function renderGoalsWidgetBody(goals, networth) {
   }).join('')
 }
 
-function widgetRowHtml(id, def, isCollapsed) {
+function widgetRowHtml(id, def) {
+  if (def.empty) {
+    return `
+      <div class="dash-widget dash-widget-empty" data-widget="${id}">
+        <span class="t">${def.title}</span><span class="n">${def.empty}</span>
+      </div>`
+  }
   return `
     <div class="dash-widget" data-widget="${id}">
-      <div class="dash-widget-head">
-        <button class="drag-handle" data-widget="${id}" aria-label="Drag to reorder">${icon('grip', 15)}</button>
-        <h2>${def.title}</h2>
-        <button class="widget-toggle" data-widget="${id}" aria-expanded="${!isCollapsed}">${isCollapsed ? 'Show' : 'Hide'}</button>
-      </div>
-      ${isCollapsed ? '' : `<div class="card">${def.body}</div>`}
+      <h2 class="dash-widget-title">${def.title}</h2>
+      <div class="card">${def.body}</div>
+    </div>
+  `
+}
+
+// Customize mode: titles only, so the list is short enough to drag through
+function customizeRowHtml(id, def, isHidden) {
+  return `
+    <div class="dash-widget customize-row${isHidden ? ' is-hidden' : ''}" data-widget="${id}">
+      <button class="drag-handle" data-widget="${id}" aria-label="Drag to reorder">${icon('grip', 18)}</button>
+      <span class="t">${def.title}</span>
+      <button class="customize-eye" data-widget="${id}" aria-label="${isHidden ? 'Show on Home' : 'Hide from Home'}" aria-pressed="${!isHidden}">${icon(isHidden ? 'eyeOff' : 'eye', 18)}</button>
     </div>
   `
 }

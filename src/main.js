@@ -16,6 +16,7 @@ import { categoryBudgetType } from './categories.js'
 import { applyTheme, setMode } from './theme.js'
 import { initUpdateReload } from './swUpdate.js'
 import { isDesktopView, onDesktopViewChange } from './platform.js'
+import { setupPullToRefresh } from './pullToRefresh.js'
 import { netWorthTimeline } from './analysisData.js'
 import { isPrivacyMode, setPrivacyMode, privacyToggleHtml, syncPrivacyButton, privacyOverlayHtml } from './privacy.js'
 import { effectiveDate, monthRange } from './helpers.js'
@@ -45,6 +46,17 @@ const app = document.getElementById('app')
 // not new architecture. Lets Analysis's investment section (and anything
 // else that forks by isDesktopView()) swap live instead of only on next nav.
 onDesktopViewChange(() => render())
+
+// phone only, and only where a refresh can't discard anything half-typed
+setupPullToRefresh({
+  isEnabled: () => !isDesktopView() && !!state.session && !state.customizing && state.view !== 'add' && !document.querySelector('.budgetInput'),
+  onRefresh: async () => {
+    try { await loadData() } catch (e) { toast(e.message || 'Failed to refresh'); return }
+    await loadNetWorth()
+    await loadGoals()
+    render()
+  },
+})
 
 // Electron's global shortcut (main.cjs, CommandOrControl+Shift+A) sends this
 // after focusing the window — setView isn't defined yet at this point in the
@@ -365,6 +377,7 @@ function renderImmediate() {
       goals: state.goals,
       onGoalsChanged: async () => { await loadGoals(); render(); return state.goals },
       customizing: state.customizing,
+      onStartCustomizing: () => { state.customizing = true; render() },
       onDoneCustomizing: () => { state.customizing = false; render() },
       onNavigate: (view) => setView(view),
       onEditTxn: (txn) => setView('add', { editingTxn: txn }),

@@ -1,12 +1,12 @@
 import { Chart, registerables } from 'chart.js'
-import { dailySpend, categoryBreakdown, monthlyRollup, heatmapData, generateInsights, computeProjection, computePersonalRecords, upcomingBills } from '../analysisData.js'
+import { dailySpend, categoryBreakdown, monthlyRollup, heatmapData, generateInsights, computePersonalRecords, upcomingBills } from '../analysisData.js'
 import { getAchievementDefs } from '../achievements.js'
 import { formatMoney, localISO, toast, formatDateDMY, escapeHtml, formatMoneyAxis } from '../helpers.js'
-import { isPrivacyMode, setPrivacyMode, syncPrivacyButton, privacyOverlayHtml } from '../privacy.js'
+import { isPrivacyMode, setPrivacyMode, syncPrivacyButton } from '../privacy.js'
 import { isDesktopView } from '../platform.js'
 import { renderInvestmentDepth, renderNetWorthSummaryCard } from './analysisInvestments.js'
-import { openBalanceForecast } from '../balanceForecastDialog.js'
-import { openInvestmentCalculator } from '../investmentCalculatorDialog.js'
+// phone Analysis is for viewing — the balance forecast and investment
+// calculator are planning tools and live on the desktop Analysis page only
 import { openYearReview } from '../yearReviewDialog.js'
 import { icon, categoryIcon } from '../icons.js'
 
@@ -37,9 +37,6 @@ function cssVar(name) {
 
 export function renderAnalysis(container, opts) {
   const { txns, budgets, recurring, networth } = opts
-  const privacyOn = isPrivacyMode()
-  const proj12 = computeProjection(txns, networth || [], 12)
-  const forecastSummaryText = `Projected net worth 12 months out: ${formatMoney(proj12.points[proj12.points.length - 1].value)}, based on your last 3 months' avg income/expense.`
   container.innerHTML = `
     <div class="top-bar"><h1>Analysis</h1></div>
     <div class="range-toggle" id="periodToggle">
@@ -62,21 +59,6 @@ export function renderAnalysis(container, opts) {
     <div class="card"><div id="heatmap"></div></div>
 
     <div id="investmentSection"></div>
-
-    <h2>Balance forecast</h2>
-    <div class="privacy-wrap${privacyOn ? ' active' : ''}" style="margin-bottom:16px">
-      <div class="card">
-        <div style="font-size:13px;color:var(--text2);margin-bottom:12px">${forecastSummaryText}</div>
-        <button class="btn secondary" id="balanceForecastBtn" style="width:auto">View full forecast</button>
-      </div>
-      ${privacyOverlayHtml()}
-    </div>
-
-    <h2>Investment calculator</h2>
-    <div class="card" style="margin-bottom:16px">
-      <div style="font-size:13px;color:var(--text2);margin-bottom:12px">Project how your GLD/index-fund contributions could grow over time.</div>
-      <button class="btn secondary" id="investmentCalcBtn" style="width:auto">Open Calculator</button>
-    </div>
 
     <h2>Cashflow forecast (next 60 days)</h2>
     <div class="card"><div id="cashflowForecast"></div></div>
@@ -109,9 +91,7 @@ export function renderAnalysis(container, opts) {
   const investmentSection = container.querySelector('#investmentSection')
   if (isDesktopView()) renderInvestmentDepth(investmentSection, networth || [])
   else renderNetWorthSummaryCard(investmentSection, networth || [])
-  container.querySelector('#balanceForecastBtn').onclick = () => openBalanceForecast({ txns, networth: networth || [] })
   container.querySelector('#yearReviewBtn').onclick = () => openYearReview({ txns })
-  container.querySelector('#investmentCalcBtn').onclick = () => openInvestmentCalculator({ txns })
   renderCashflowForecast(container, recurring)
   renderPersonalRecords(container, txns)
   renderAchievements(container, txns, budgets, recurring)
