@@ -6,6 +6,7 @@ import { signOut, updateEmail, updateDisplayName, bulkInsertTransactions, bulkIn
 import { ACCENTS, getMode, setMode, getAccent, setAccent } from '../theme.js'
 import { icon } from '../icons.js'
 import { headHtml, segHtml, wireSeg } from './ui.js'
+import { renderClaudeAccess } from '../claudeAccess.js'
 
 const DESKTOP_ACCENTS = [...ACCENTS, { id: 'gold', label: 'Gold', swatch: '#c9a227' }]
 
@@ -14,7 +15,7 @@ function row(label, desc, ctrl) {
 }
 
 export function renderSettingsDesktop(container, opts) {
-  const { txns, budgets, recurring, networth, goals, session, onSignedOut, onSessionChanged, onDataRestored, onThemeChanged } = opts
+  const { txns, budgets, recurring, networth, goals, session, onSignedOut, onSessionChanged, onDataRestored, onThemeChanged, onClaudeAccessChanged } = opts
   const displayName = session?.user?.user_metadata?.display_name || ''
   const email = session?.user?.email || ''
   const accent = getAccent()
@@ -51,6 +52,11 @@ export function renderSettingsDesktop(container, opts) {
         <div class="d-set-title">${isElectron ? 'Desktop app' : 'About'}</div>
         ${row('Version', isElectron ? 'Updates download in the background and ask you to restart when ready.' : 'Shown here so it’s obvious whether a new deploy has landed.', `<span class="mono" id="sVersion">v${__APP_VERSION__}</span>${isElectron ? '<button class="d-btn" id="sUpdates">Check for updates</button>' : ''}`)}
         ${row('Made by', '', '<span class="d-list-meta">Alex Kim</span>')}
+      </div>
+
+      <div class="d-set-card full">
+        <div class="d-set-title">Claude access</div>
+        <div id="claudeAccess"></div>
       </div>
 
       <div class="d-set-card danger full">
@@ -134,6 +140,8 @@ export function renderSettingsDesktop(container, opts) {
     await signOut()
     onSignedOut()
   }
+  renderClaudeAccess(container.querySelector('#claudeAccess'), { onChanged: onClaudeAccessChanged })
+
   if (isElectron) {
     window.electronAPI.getVersion().then(v => { const el = container.querySelector('#sVersion'); if (el) el.textContent = 'v' + v })
     container.querySelector('#sUpdates').onclick = () => window.electronAPI.checkForUpdates()

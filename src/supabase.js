@@ -168,6 +168,45 @@ export async function deleteSuggestion(id) {
   if (error) throw error
 }
 
+/* ── Claude access (helper accounts) — see SUPABASE-SETUP.md 2026-10-10.
+   The helper is a separate Coin account; what it may do is enforced by the
+   database policies, these just manage the grant and read its log. ── */
+export async function fetchDelegates() {
+  const { data: { user } } = await supa.auth.getUser()
+  // owner_id filter: a helper account would otherwise also see grants made TO it
+  const { data, error } = await supa.from('coin_delegates').select('*').eq('owner_id', user.id).order('created_at')
+  if (error) throw error
+  return data
+}
+
+export async function addDelegate(email) {
+  const { error } = await supa.rpc('coin_add_delegate', { helper_email: email })
+  if (error) throw error
+}
+
+export async function updateDelegate(delegateId, patch) {
+  const { data: { user } } = await supa.auth.getUser()
+  const { error } = await supa.from('coin_delegates').update(patch).eq('owner_id', user.id).eq('delegate_id', delegateId)
+  if (error) throw error
+}
+
+export async function removeDelegate(delegateId) {
+  const { data: { user } } = await supa.auth.getUser()
+  const { error } = await supa.from('coin_delegates').delete().eq('owner_id', user.id).eq('delegate_id', delegateId)
+  if (error) throw error
+}
+
+export async function fetchDelegateLog(limit = 50) {
+  const { data, error } = await supa.from('coin_delegate_log').select('*').order('created_at', { ascending: false }).limit(limit)
+  if (error) throw error
+  return data
+}
+
+export async function markDelegateLogUndone(id) {
+  const { error } = await supa.from('coin_delegate_log').update({ undone_at: new Date().toISOString() }).eq('id', id)
+  if (error) throw error
+}
+
 /* ── Net worth check-ins ── */
 
 export async function fetchNetWorth() {

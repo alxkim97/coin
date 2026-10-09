@@ -313,6 +313,112 @@ create policy "own rows" on coin_projection_events for all
 
 Desktop Projection page: your own one-off or repeating money events (a renovation, rent income starting, an annual bonus) layered on top of the run-rate projection. Without this table the page still works from the run-rate alone and shows a setup note instead of the events list.
 
+## Claude access — suggest, time-boxed editing, activity log (2026-10-10)
+
+Run this once — new tables/functions plus extra policies; nothing existing is changed or removed:
+
+```sql
+-- Who may act on whose data. Claude gets its OWN Coin account (never your
+-- login); this row is what lets that account see/suggest/edit your rows.
+create table if not exists coin_delegates (
+  owner_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  delegate_id uuid not null references auth.users(id) on delete cascade,
+  delegate_email text not null,
+  can_suggest boolean not null default true,
+  edit_until timestamptz, -- direct editing allowed until this moment; null/past = off
+  edit_note text,         -- what the window is for, e.g. "September KBank statement"
+  created_at timestamptz not null default now(),
+  primary key (owner_id, delegate_id)
+);
+alter table coin_delegates enable row level security;
+create policy "owner manages" on coin_delegates for all
+  using (auth.uid() = owner_id) with check (auth.uid() = owner_id);
+create policy "delegate reads own grant" on coin_delegates for select
+  using (auth.uid() = delegate_id);
+
+create or replace function coin_can_read(owner uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from coin_delegates where owner_id = owner and delegate_id = auth.uid()
+    and (can_suggest or edit_until > now()))
+$$;
+create or replace function coin_can_suggest(owner uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from coin_delegates where owner_id = owner and delegate_id = auth.uid() and can_suggest)
+$$;
+create or replace function coin_can_edit(owner uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from coin_delegates where owner_id = owner and delegate_id = auth.uid() and edit_until > now())
+$$;
+
+-- Connect a helper account by email (it must already be signed up).
+create or replace function coin_add_delegate(helper_email text) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare d uuid;
+begin
+  if auth.uid() is null then raise exception 'Not signed in'; end if;
+  select id into d from auth.users where lower(email) = lower(trim(helper_email));
+  if d is null then raise exception 'No Coin account with that email — create it first'; end if;
+  if d = auth.uid() then raise exception 'That is your own account — use a separate one for Claude'; end if;
+  insert into coin_delegates (owner_id, delegate_id, delegate_email)
+    values (auth.uid(), d, lower(trim(helper_email)))
+    on conflict (owner_id, delegate_id) do update set can_suggest = true;
+  return d;
+end $$;
+revoke all on function coin_add_delegate(text) from public, anon;
+grant execute on function coin_add_delegate(text) to authenticated;
+
+-- Transactions: read while suggesting or editing; write only inside the window.
+create policy "delegate read" on coin_transactions for select using (coin_can_read(user_id));
+create policy "delegate insert" on coin_transactions for insert with check (coin_can_edit(user_id));
+create policy "delegate update" on coin_transactions for update using (coin_can_edit(user_id)) with check (coin_can_edit(user_id));
+create policy "delegate delete" on coin_transactions for delete using (coin_can_edit(user_id));
+
+-- Suggestions can now propose edits and deletes, not just new entries.
+alter table coin_suggestions add column if not exists action text not null default 'add'
+  check (action in ('add', 'edit', 'delete'));
+alter table coin_suggestions add column if not exists target_id uuid references coin_transactions(id) on delete cascade;
+alter table coin_suggestions add column if not exists tags text[];
+create policy "delegate suggests" on coin_suggestions for all
+  using (coin_can_suggest(user_id)) with check (coin_can_suggest(user_id));
+
+-- Every change a helper makes to a transaction is logged automatically, so
+-- it can be reviewed and undone. Helpers can't read or alter the log.
+create table if not exists coin_delegate_log (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  actor_id uuid not null,
+  action text not null, -- insert | update | delete
+  txn_id uuid not null,
+  before jsonb,
+  after jsonb,
+  undone_at timestamptz,
+  created_at timestamptz not null default now()
+);
+alter table coin_delegate_log enable row level security;
+create policy "owner reads" on coin_delegate_log for select using (auth.uid() = owner_id);
+create policy "owner marks undone" on coin_delegate_log for update
+  using (auth.uid() = owner_id) with check (auth.uid() = owner_id);
+
+create or replace function coin_log_delegate_change() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare owner uuid := coalesce(new.user_id, old.user_id);
+begin
+  if auth.uid() is null or auth.uid() = owner then return null; end if;
+  insert into coin_delegate_log (owner_id, actor_id, action, txn_id, before, after)
+  values (owner, auth.uid(), lower(tg_op), coalesce(new.id, old.id),
+    case when tg_op <> 'INSERT' then to_jsonb(old) end,
+    case when tg_op <> 'DELETE' then to_jsonb(new) end);
+  return null;
+end $$;
+drop trigger if exists coin_transactions_delegate_log on coin_transactions;
+create trigger coin_transactions_delegate_log after insert or update or delete on coin_transactions
+  for each row execute function coin_log_delegate_change();
+```
+
+Lets Claude help log and fix transactions **through its own Coin account**, never your login. Settings → Claude access connects that account and controls it: **Suggest** (read transactions and propose adds/edits/deletes you Accept or Decline on the Dashboard) and **Direct editing** for a window you choose (1 hour, rest of today, 24 hours) — when the window ends the database itself refuses its writes. Every direct change shows in Settings → Claude activity with an Undo button. The helper account sees transactions and suggestions only — not budgets, net worth, goals, receipts, or settings. Removing it in Settings revokes everything immediately.
+
+Setup: create the helper account (sign out, "Create one", use an address like `you+claude@gmail.com`), sign back in as yourself, connect it in Settings, then run `node scripts/save-session.js` **yourself** and sign in as the helper — the script refuses to save your main account.
+
 ## One-time data migration
 
 To bring over your existing 1,416 transactions from Ledger's `manual logs/ledger-import-all.json`, see `scripts/migrate.js` in this repo.

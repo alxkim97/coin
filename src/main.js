@@ -1,6 +1,6 @@
 import './style.css'
 import './desktop.css'
-import { getSession, onAuthChange, fetchTransactions, fetchBudgets, fetchRecurring, addTransaction, claimRecurringPeriod, fetchNetWorth, fetchSuggestions, fetchGoals, fetchProjectionEvents, sweepOrphanReceipts } from './supabase.js'
+import { getSession, onAuthChange, fetchTransactions, fetchBudgets, fetchRecurring, addTransaction, claimRecurringPeriod, fetchNetWorth, fetchSuggestions, fetchGoals, fetchProjectionEvents, sweepOrphanReceipts, fetchDelegates, updateDelegate } from './supabase.js'
 import { renderAuth } from './views/auth.js'
 import { renderQuickAdd } from './views/quickAdd.js'
 import { renderTransactions } from './views/transactions.js'
@@ -16,6 +16,7 @@ import { categoryBudgetType } from './categories.js'
 import { applyTheme, setMode } from './theme.js'
 import { initUpdateReload } from './swUpdate.js'
 import { initReceiptBadges } from './receiptViewer.js'
+import { isEditWindowOpen, formatUntil } from './claudeAccess.js'
 import { isDesktopView, onDesktopViewChange } from './platform.js'
 import { setupPullToRefresh } from './pullToRefresh.js'
 import { netWorthTimeline } from './analysisData.js'
@@ -142,6 +143,7 @@ const state = {
   goals: [],
   projectionEvents: [],
   projectionEventsReady: true, // false until coin_projection_events exists
+  delegates: [], // Claude helper accounts (Settings → Claude access)
   year: now.getFullYear(),
   month: now.getMonth(),
   range: 1,
@@ -196,6 +198,14 @@ async function loadGoals() {
     state.goals = await fetchGoals()
   } catch {
     state.goals = [] // table may not exist yet on an older install — best-effort, not fatal
+  }
+}
+
+async function loadDelegates() {
+  try {
+    state.delegates = await fetchDelegates()
+  } catch {
+    state.delegates = [] // coin_delegates not created yet — feature just stays off
   }
 }
 
@@ -273,7 +283,7 @@ async function processRecurring() {
 // never sees (or replays) the previous account's data.
 function signedOut() {
   state.session = null
-  Object.assign(state, { txns: [], budgets: [], recurring: [], networth: [], suggestions: [], goals: [], projectionEvents: [], editingTxn: null, customizing: false, view: 'dashboard' })
+  Object.assign(state, { delegates: [], txns: [], budgets: [], recurring: [], networth: [], suggestions: [], goals: [], projectionEvents: [], editingTxn: null, customizing: false, view: 'dashboard' })
   clearCachedData()
   clearUndo()
 }
@@ -340,6 +350,7 @@ function render() {
   else document.startViewTransition(() => renderImmediate()).ready.catch(() => {}) // a skipped/interrupted animation isn't an error
 }
 
+let bannerTimer = null
 function renderImmediate() {
   app.innerHTML = ''
 
@@ -452,6 +463,8 @@ function renderImmediate() {
       // refresh instead of chaining the single-table callbacks above
       onDataRestored: async () => { await loadData(); await loadNetWorth(); await loadGoals(); render() },
       onThemeChanged: () => render(),
+      // a suggestion accept/undo in the card can change transactions too
+      onClaudeAccessChanged: async () => { await loadDelegates(); await loadData().catch(() => {}); render() },
     })
   } else if (state.view === 'projection') {
     renderProjectionDesktop(screen, {
@@ -470,6 +483,23 @@ function renderImmediate() {
       networth: state.networth,
       session: state.session,
     })
+  }
+
+  // Always visible while Claude can write directly — never a silent window
+  const editing = state.delegates.find(isEditWindowOpen)
+  clearTimeout(bannerTimer)
+  if (editing) {
+    // drop the banner by itself when the window closes
+    bannerTimer = setTimeout(() => render(), Math.min(new Date(editing.edit_until) - Date.now() + 1000, 2 ** 31 - 1))
+    const banner = document.createElement('div')
+    banner.className = 'claude-banner'
+    banner.innerHTML = `<span>Claude can edit your transactions until <strong>${formatUntil(editing.edit_until)}</strong></span><button type="button" id="claudeStop">Stop</button>`
+    banner.querySelector('#claudeStop').onclick = async () => {
+      try { await updateDelegate(editing.delegate_id, { edit_until: null, edit_note: null }); toast('Direct editing stopped') } catch (e) { toast(e.message || 'Failed') }
+      await loadDelegates()
+      render()
+    }
+    screen.prepend(banner)
   }
 
   const tabbar = document.createElement('div')
@@ -638,6 +668,7 @@ async function boot() {
       await loadNetWorth()
       await loadGoals()
       await loadProjectionEvents()
+      await loadDelegates()
     } catch (e) {
       toast(e.message || 'Failed to load data')
     }

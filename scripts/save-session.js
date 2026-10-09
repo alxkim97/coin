@@ -1,17 +1,17 @@
-// Run this yourself, in your own terminal — not through Claude. It signs in
-// once and saves a Supabase session (refresh token) to .coin-session.json so
-// Claude can write suggestion rows later without ever seeing your password.
+// Run this yourself, in your own terminal — not through Claude. Sign in as
+// the HELPER account (Settings → Claude access), never your own: it saves
+// that account's session (refresh token) to .coin-session.json so Claude can
+// use scripts/coin-claude.js without ever seeing a password. What the helper
+// may do is enforced by the database, per the switches in Settings.
 //
 // Usage:
 //   node scripts/save-session.js
 //   (prompts for email, then password with hidden input — nothing is echoed
 //   or left in shell history)
 //
-// Security note: .coin-session.json carries the same access your login does
-// (Supabase doesn't support a session scoped to just one table) and is
-// gitignored — treat it like a saved browser session. Re-run this script
-// any time to overwrite it with a fresh session, or just delete the file to
-// revoke local access.
+// Refuses to save an account that owns transactions (i.e. your main one).
+// .coin-session.json is gitignored. Delete it, or Disconnect the helper in
+// Settings, to revoke access.
 
 import { createClient } from '@supabase/supabase-js'
 import { writeFileSync } from 'fs'
@@ -69,6 +69,18 @@ async function main() {
   const { data, error } = await supa.auth.signInWithPassword({ email, password })
   if (error) throw error
 
+  // safety: the helper account owns no transactions of its own
+  const { data: own, error: ownErr } = await supa.from('coin_transactions').select('id').eq('user_id', data.user.id).limit(1)
+  if (ownErr) throw ownErr
+  if (own.length) {
+    await supa.auth.signOut()
+    console.error(`${data.user.email} has its own transactions — that looks like your main account. Not saved.`)
+    console.error('Sign in with the separate helper account instead (Settings → Claude access).')
+    process.exit(1)
+  }
+  const { data: grants } = await supa.from('coin_delegates').select('owner_id').eq('delegate_id', data.user.id)
+  if (!grants?.length) console.warn('Note: this account is not connected yet — enter its email in Settings → Claude access.')
+
   writeFileSync(SESSION_PATH, JSON.stringify({
     access_token: data.session.access_token,
     refresh_token: data.session.refresh_token,
@@ -77,7 +89,7 @@ async function main() {
   }, null, 2))
 
   console.log(`Signed in as ${data.user.email}. Session saved to ${SESSION_PATH}`)
-  console.log('Claude can now write suggestions until you delete that file or it expires.')
+  console.log('Claude can now act as this helper account, limited to what Settings → Claude access allows.')
 }
 
 main().catch(e => {

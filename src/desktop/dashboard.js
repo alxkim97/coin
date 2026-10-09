@@ -10,7 +10,7 @@ import { openGoals } from '../goalsDialog.js'
 import { netWorthTimeline, goalProgress } from '../analysisData.js'
 import { billsDue } from '../recurringReminders.js'
 import { openMarkPaidDialog } from '../markPaidDialog.js'
-import { addTransaction, deleteSuggestion } from '../supabase.js'
+import { suggestionRowsHtml, wireSuggestionActions } from '../suggestions.js'
 import { icon, categoryIcon } from '../icons.js'
 import { isPrivacyMode, privacyOverlayHtml } from '../privacy.js'
 import {
@@ -165,21 +165,7 @@ function buildWidgets({ txns, budgets, activeBudgets, range, spentByCategory, sp
   const w = {}
 
   w.suggestions = suggestions?.length
-    ? { body: suggestions.map(s => `
-        <div class="suggestion-row">
-          <div class="suggestion-icon">${categoryIcon(s.category, 15)}</div>
-          <div class="suggestion-main">
-            <div class="suggestion-top">
-              <span class="suggestion-cat">${escapeHtml(s.category)}${s.subcategory ? ' · ' + escapeHtml(s.subcategory) : ''}</span>
-              <span class="suggestion-amt ${s.type}">${s.type === 'income' ? '+' : '−'}${formatMoney(s.amount)}</span>
-            </div>
-            <div class="suggestion-date">${formatDateDMY(s.date)}${s.notes ? ' · ' + escapeHtml(s.notes) : ''}</div>
-          </div>
-          <div class="suggestion-actions">
-            <button class="suggestion-decline" data-id="${s.id}" aria-label="Decline">${icon('x', 13)}</button>
-            <button class="suggestion-accept" data-id="${s.id}" aria-label="Accept">${icon('check', 13)}</button>
-          </div>
-        </div>`).join('') }
+    ? { body: suggestionRowsHtml(suggestions, txns, 15, 13) }
     : { empty: 'None right now' }
 
   const timeline = netWorthTimeline(networth)
@@ -296,40 +282,7 @@ function wireWidgets(el, opts) {
       if (item) openMarkPaidDialog({ item, onSaved: onBillsChanged })
     }
   })
-  el.querySelectorAll('.suggestion-accept').forEach(btn => {
-    btn.onclick = async () => {
-      const s = (suggestions || []).find(x => x.id === btn.dataset.id)
-      if (!s) return
-      btn.disabled = true
-      try {
-        await addTransaction({
-          type: s.type, amount: s.amount, date: s.date, category: s.category,
-          subcategory: s.subcategory || null, notes: s.notes || null,
-          budget_type: s.type === 'expense' ? categoryBudgetType(s.category) : null,
-          is_credit_card: s.is_credit_card || false, is_shopee: s.is_shopee || false,
-        })
-        await deleteSuggestion(s.id)
-        toast('Added')
-        await onSuggestionsChanged()
-      } catch (e) {
-        btn.disabled = false
-        toast(e.message || 'Failed to accept suggestion')
-      }
-    }
-  })
-  el.querySelectorAll('.suggestion-decline').forEach(btn => {
-    btn.onclick = async () => {
-      btn.disabled = true
-      try {
-        await deleteSuggestion(btn.dataset.id)
-        toast('Declined')
-        await onSuggestionsChanged()
-      } catch (e) {
-        btn.disabled = false
-        toast(e.message || 'Failed to decline suggestion')
-      }
-    }
-  })
+  wireSuggestionActions(el, { suggestions, onSuggestionsChanged })
 }
 
 // Multi-column layout, so "where to drop" comes from the widget under the

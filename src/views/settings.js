@@ -1,12 +1,13 @@
 import { toast, downloadFile, txnsToCsv, todayISO, confirmDialog, escapeHtml } from '../helpers.js'
 import { signOut, updateEmail, updateDisplayName, bulkInsertTransactions, bulkInsertRecurring, bulkRestoreNetWorth, bulkInsertGoals, upsertBudget } from '../supabase.js'
+import { renderClaudeAccess } from '../claudeAccess.js'
 import { ACCENTS, getMode, setMode, getAccent, setAccent } from '../theme.js'
 
 // Settings is app-function only (appearance, data, account) — Repeat
 // Purchases/Net Worth/Goals/Year in Review each live where they're actually
 // used (Add page, Dashboard widgets, Analysis), not tucked in here.
 export function renderSettings(container, opts) {
-  const { txns, budgets, recurring, networth, goals, session, onSignedOut, onSessionChanged, onDataRestored } = opts
+  const { txns, budgets, recurring, networth, goals, session, onSignedOut, onSessionChanged, onDataRestored, onClaudeAccessChanged } = opts
 
   const displayName = session?.user?.user_metadata?.display_name || ''
   const mode = getMode()
@@ -50,6 +51,9 @@ export function renderSettings(container, opts) {
         <button class="btn secondary" id="checkUpdatesBtn">Check for Updates</button>
       </div>
     ` : ''}
+
+    <h2>Claude access</h2>
+    <div class="card" style="margin-bottom:16px" id="claudeAccess"></div>
 
     <h2>Account</h2>
     <div class="card" style="margin-bottom:16px">
@@ -169,6 +173,8 @@ export function renderSettings(container, opts) {
     await signOut()
     onSignedOut()
   }
+
+  renderClaudeAccess(container.querySelector('#claudeAccess'), { onChanged: onClaudeAccessChanged })
 
   if (window.electronAPI?.isElectron) {
     window.electronAPI.getVersion().then(v => {

@@ -8,7 +8,7 @@ import { openGoals } from '../goalsDialog.js'
 import { netWorthTimeline, goalProgress } from '../analysisData.js'
 import { billsDue } from '../recurringReminders.js'
 import { openMarkPaidDialog } from '../markPaidDialog.js'
-import { addTransaction, deleteSuggestion } from '../supabase.js'
+import { suggestionRowsHtml, wireSuggestionActions } from '../suggestions.js'
 import { icon, categoryIcon } from '../icons.js'
 import { monthPickerHtml, wireMonthPicker } from '../monthPicker.js'
 
@@ -111,7 +111,7 @@ export function renderDashboard(container, opts) {
     suggestions: {
       title: 'Suggestions',
       empty: suggestions?.length ? null : 'None right now',
-      body: renderSuggestionsWidgetBody(suggestions),
+      body: suggestionRowsHtml(suggestions, txns),
     },
     goals: {
       title: 'Goals',
@@ -198,45 +198,7 @@ export function renderDashboard(container, opts) {
     })
   })
 
-  widgetsEl.querySelectorAll('.suggestion-accept').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const s = (suggestions || []).find(x => x.id === btn.dataset.id)
-      if (!s) return
-      btn.disabled = true
-      try {
-        await addTransaction({
-          type: s.type,
-          amount: s.amount,
-          date: s.date,
-          category: s.category,
-          subcategory: s.subcategory || null,
-          notes: s.notes || null,
-          budget_type: s.type === 'expense' ? categoryBudgetType(s.category) : null,
-          is_credit_card: s.is_credit_card || false,
-          is_shopee: s.is_shopee || false,
-        })
-        await deleteSuggestion(s.id)
-        toast('Added')
-        await onSuggestionsChanged()
-      } catch (e) {
-        btn.disabled = false
-        toast(e.message || 'Failed to accept suggestion')
-      }
-    })
-  })
-  widgetsEl.querySelectorAll('.suggestion-decline').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      btn.disabled = true
-      try {
-        await deleteSuggestion(btn.dataset.id)
-        toast('Declined')
-        await onSuggestionsChanged()
-      } catch (e) {
-        btn.disabled = false
-        toast(e.message || 'Failed to decline suggestion')
-      }
-    })
-  })
+  wireSuggestionActions(widgetsEl, { suggestions, onSuggestionsChanged })
 }
 
 function renderStreaksBody(txns, budgets) {
@@ -297,26 +259,6 @@ function renderNetWorthWidgetBody(networth) {
   `
 }
 
-function renderSuggestionsWidgetBody(suggestions) {
-  if (!suggestions || !suggestions.length) return '<div class="empty-state">No suggestions right now.</div>'
-  return suggestions.map(s => `
-    <div class="suggestion-row">
-      <div class="suggestion-icon">${categoryIcon(s.category)}</div>
-      <div class="suggestion-main">
-        <div class="suggestion-top">
-          <span class="suggestion-cat">${escapeHtml(s.category)}${s.subcategory ? ' · ' + escapeHtml(s.subcategory) : ''}</span>
-          <span class="suggestion-amt ${s.type}">${s.type === 'income' ? '+' : '−'}${formatMoney(s.amount)}</span>
-        </div>
-        <div class="suggestion-date">${formatDateDMY(s.date)}${s.notes ? ' · ' + escapeHtml(s.notes) : ''}</div>
-        ${s.source_note ? `<div class="suggestion-source">${escapeHtml(s.source_note)}</div>` : ''}
-      </div>
-      <div class="suggestion-actions">
-        <button class="suggestion-decline" data-id="${s.id}" aria-label="Decline">${icon('x', 15)}</button>
-        <button class="suggestion-accept" data-id="${s.id}" aria-label="Accept">${icon('check', 15)}</button>
-      </div>
-    </div>
-  `).join('')
-}
 
 function renderBillsDueWidgetBody(recurring) {
   const due = billsDue(recurring)
