@@ -468,7 +468,10 @@ function renderImmediate() {
       <div class="nav-label">Overview</div>
       ${tab('dashboard', 'dashboard', desktop ? 'Dashboard' : 'Home')}
       ${tab('transactions', 'history', 'History')}
-      ${tab('add', 'add', 'Add')}
+      ${desktop ? tab('add', 'add', 'Add') : `
+        <button class="tab tab-add ${state.view === 'add' ? 'active' : ''}" data-view="add" aria-label="Add transaction">
+          <span class="tab-add-circle">${icon('plus', 28)}</span><span>Add</span>
+        </button>`}
       <div class="nav-label">Planning</div>
       ${tab('budget', 'budget', desktop ? 'Budget &amp; Limits' : 'Budget')}
       ${tab('projection', 'activity', 'Projection', 'tab-desktop-only')}
@@ -477,7 +480,7 @@ function renderImmediate() {
       ${tab('analysis', 'analysis', 'Analysis')}
       ${ASK_ENABLED ? tab('ask', 'chat', 'Ask') : ''}
       <div class="nav-label">System</div>
-      ${tab('settings', 'settings', 'Settings')}
+      ${tab('settings', 'settings', 'Settings', 'tab-desktop-only')}
     </div>
   `
   tabbar.querySelectorAll('.tab').forEach(btn => {

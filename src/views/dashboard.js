@@ -115,7 +115,7 @@ export function renderDashboard(container, opts) {
   const collapsed = getCollapsed(!isDesktopView())
 
   container.innerHTML = `
-    <div class="top-bar"><h1>Dashboard</h1></div>
+    <div class="top-bar"><h1>Dashboard</h1><button class="top-bar-btn" id="openSettings" aria-label="Settings">${icon('settings', 22)}</button></div>
     <div class="range-toggle" id="rangeToggle">
       ${RANGES.map(r => `<button data-range="${r}" class="${r === range ? 'active' : ''}">${r === 1 ? '1M' : r + 'M'}</button>`).join('')}
     </div>
@@ -147,6 +147,8 @@ export function renderDashboard(container, opts) {
     btn.onclick = () => onRangeChange(Number(btn.dataset.range))
   })
   wireMonthPicker(container, onMonthChange)
+  // phone: Settings left the tab bar so Add can sit centred in 5 tabs — it lives here instead
+  container.querySelector('#openSettings').onclick = () => opts.onNavigate?.('settings')
 
   const widgetsEl = container.querySelector('#dashWidgets')
   widgetsEl.querySelectorAll('.widget-toggle').forEach(btn => {

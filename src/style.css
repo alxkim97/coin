@@ -515,6 +515,24 @@ label:first-child { margin-top: 0; }
 }
 .tab:active { transform: scale(.93); }
 .tab svg { width: 22px; height: 22px; }
+/* phone: Add is the centre of 5 tabs, as a raised round accent button */
+@media (max-width: 859px) {
+  .tab.tab-add, .tab.tab-add.active { background: none; color: var(--text2); view-transition-name: none; }
+  .tab.tab-add.active { color: var(--accent-ink); }
+  .tab-add-circle {
+    display: flex; align-items: center; justify-content: center;
+    width: 48px; height: 48px; margin-top: -26px; border-radius: 999px; /* nets 22px, same as the other tab icons */
+    background: var(--accent); color: var(--on-accent);
+    box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+  .tab.tab-add .tab-add-circle svg { width: 26px; height: 26px; }
+}
+/* phone: Settings gear in the Home header (Settings isn't a phone tab) */
+.top-bar-btn {
+  width: 40px; height: 40px; border-radius: 999px; flex-shrink: 0; margin-bottom: 14px;
+  display: flex; align-items: center; justify-content: center; padding: 0; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--border); color: var(--text2);
+}
 
 /* transaction rows */
 .swipe-row {
