@@ -15,7 +15,7 @@ import { icon, categoryIcon } from '../icons.js'
 import { isPrivacyMode, privacyOverlayHtml } from '../privacy.js'
 import {
   headHtml, kpiHtml, barHtml, statusClass, cardHtml, emptyCardHtml, renderChart, incomeExpenseConfig,
-  donutConfig, legendHtml, paletteColor, monthKeysEnding, shortMonth,
+  donutConfig, legendHtml, catColor, monthKeysEnding, shortMonth,
 } from './ui.js'
 import { txnTableHtml, wireTxnTable } from './history.js'
 
@@ -191,16 +191,9 @@ function buildWidgets({ txns, budgets, activeBudgets, range, spentByCategory, sp
     w.networth = {
       privacy: true,
       body: `
-        <div class="d-nw-widget">
-          <div style="flex:1;min-width:0">
-            <div class="d-nw-widget-val">${formatMoney(latest.total)}</div>
-            <div class="d-list-meta">${delta === null ? `as of ${formatDateDMY(latest.date)}` : `<span class="${delta >= 0 ? 'pos' : 'neg'}">${delta >= 0 ? '+' : '−'}${formatMoney(Math.abs(delta))}</span> since last · ${formatDateDMY(latest.date)}`}</div>
-          </div>
-          <span class="d-link">Check-ins ${icon('arrowRight', 11)}</span>
-        </div>
-        <div style="display:flex;gap:14px;margin-top:10px">
-          ${[['Cash', latest.cash], ['Invested', latest.invested], ['Insurance', latest.insurance]].filter(([, v]) => v).map(([l, v]) => `<div><div class="d-kpi-label">${l}</div><div class="d-list-val">${formatMoney(v)}</div></div>`).join('')}
-        </div>`,
+        <div class="d-nw-big" title="Click for check-ins">${formatMoney(Math.round(latest.total))}</div>
+        <div class="d-list-meta">${delta === null ? `as of ${formatDateDMY(latest.date)}` : `<span class="${delta >= 0 ? 'pos' : 'neg'}">${delta >= 0 ? '+' : '−'}${formatMoney(Math.abs(Math.round(delta)))}</span> since last check-in · ${formatDateDMY(latest.date)}`}</div>
+        ${nwSplitHtml(latest)}`,
     }
   }
 
@@ -244,12 +237,12 @@ function buildWidgets({ txns, budgets, activeBudgets, range, spentByCategory, sp
     ? { sub: range > 1 ? `limits × ${range} months` : '', body: activeBudgets.map(b => {
         const limit = b.monthly_limit * range
         const spent = spentByCategory[b.category] || 0
-        return `<div class="d-meter"><div class="d-meter-top"><span class="n">${escapeHtml(b.category)}</span><span class="v">${formatMoney(Math.round(spent))} <small>/ ${formatMoney(limit)}</small></span></div>${barHtml(spent / limit * 100, statusClass(spent, limit))}</div>`
+        return `<div class="d-meter"><div class="d-meter-top"><span class="n d-budget-name" style="--cat:${catColor(b.category)}">${categoryIcon(b.category, 13)}${escapeHtml(b.category)}</span><span class="v">${formatMoney(Math.round(spent))} <small>/ ${formatMoney(limit)}</small></span></div>${barHtml(spent / limit * 100, statusClass(spent, limit))}</div>`
       }).join('') }
     : { empty: 'No limits set yet' }
 
   w.category = catRows.length
-    ? { body: catRows.map(([cat, amt]) => `<div class="d-meter"><div class="d-meter-top"><span class="n">${escapeHtml(cat)}</span><span class="v">${formatMoney(Math.round(amt))}</span></div>${barHtml(expense ? amt / expense * 100 : 0, 'accent')}</div>`).join('') }
+    ? { body: catRows.map(([cat, amt]) => `<div class="d-meter"><div class="d-meter-top"><span class="n d-budget-name" style="--cat:${catColor(cat)}">${categoryIcon(cat, 13)}${escapeHtml(cat)}</span><span class="v">${formatMoney(Math.round(amt))}</span></div><div class="d-bar"><span style="width:${(expense ? amt / expense * 100 : 0).toFixed(1)}%;background:${catColor(cat)}"></span></div></div>`).join('') }
     : { empty: 'No expenses in this period' }
 
   const vendors = Object.entries(spentByVendor).sort((a, b) => b[1].amount - a[1].amount).slice(0, 6)
@@ -258,6 +251,17 @@ function buildWidgets({ txns, budgets, activeBudgets, range, spentByCategory, sp
     : { empty: 'No vendor names logged in this period' }
 
   return w
+}
+
+// one slim bar for the cash / invested / insurance mix — amounts on hover,
+// so the total stays the only big number in the card
+function nwSplitHtml(n) {
+  const parts = [['Cash', n.cash, 'var(--blue)'], ['Invested', n.invested, 'var(--emerald)'], ['Insurance', n.insurance, 'var(--gold)']].filter(([, v]) => v > 0)
+  const total = parts.reduce((s, [, v]) => s + v, 0)
+  if (!total) return ''
+  return `
+    <div class="d-nw-split">${parts.map(([l, v, c]) => `<span style="flex:${v};background:${c}" title="${l}: ${formatMoney(Math.round(v))}"></span>`).join('')}</div>
+    <div class="d-nw-legend">${parts.map(([l, v, c]) => `<span title="${formatMoney(Math.round(v))}"><i style="background:${c}"></i>${l} ${Math.round(v / total * 100)}%</span>`).join('')}</div>`
 }
 
 function widgetHtml(id, def, { customizing, isHidden }) {
@@ -373,7 +377,7 @@ function drawDonut(container, catRows) {
   const top = catRows.slice(0, 7).map(([label, amount]) => ({ label, amount }))
   const rest = catRows.slice(7).reduce((s, [, v]) => s + v, 0)
   if (rest > 0) top.push({ label: 'Other', amount: rest })
-  const colors = top.map((r, i) => paletteColor(i, r.label))
+  const colors = top.map(r => catColor(r.label))
   renderChart('dash-donut', container.querySelector('#dDonut'), donutConfig(top.map(r => r.label), top.map(r => r.amount), colors))
   container.querySelector('#dDonutLegend').innerHTML = legendHtml(top, colors)
 }

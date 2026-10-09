@@ -93,7 +93,7 @@ export function renderProjectionDesktop(container, opts) {
         title: 'Run-rate', sub: rate.used.length ? `Average of ${rate.used.map(shortMonth).join(', ')}` : 'No complete months yet',
         body: `
           <div class="d-res-row"><span class="l">Income</span><span class="v pos">${formatMoney(Math.round(rate.income))}/mo</span></div>
-          <div class="d-res-row"><span class="l">Spending</span><span class="v">${formatMoney(Math.round(rate.spend))}/mo</span></div>
+          <div class="d-res-row"><span class="l">Spending</span><span class="v neg">${formatMoney(Math.round(rate.spend))}/mo</span></div>
           <div class="d-res-row"><span class="l">Investing <span class="d-list-meta">(stays in net worth)</span></span><span class="v">${formatMoney(Math.round(rate.invest))}/mo</span></div>
           <div class="d-res-row total"><span class="l">Net worth grows</span><span class="v ${rate.income - rate.spend >= 0 ? 'green' : 'neg'}">${rate.income - rate.spend >= 0 ? '+' : '−'}${formatMoney(Math.abs(Math.round(rate.income - rate.spend)))}/mo</span></div>
           <div class="d-note" style="margin-top:10px">Months with nothing logged are skipped. Investment transfers count as saving, not spending, since that money is still yours.</div>`,
@@ -232,7 +232,7 @@ function drawTable(container, rows) {
       <tbody>${pg.items.map(r => `<tr class="hover">
         <td class="mono">${new Date(r.key + '-01T00:00:00').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</td>
         <td class="r mono pos">${formatMoney(Math.round(r.income))}</td>
-        <td class="r mono">${formatMoney(Math.round(r.spend))}</td>
+        <td class="r mono neg">${formatMoney(Math.round(r.spend))}</td>
         <td class="r mono ${r.ev > 0 ? 'pos' : r.ev < 0 ? 'neg' : 'dim'}">${r.ev ? (r.ev > 0 ? '+' : '−') + formatMoney(Math.abs(r.ev)) : '—'}</td>
         <td class="r mono ${r.net >= 0 ? 'pos' : 'neg'}">${signed(r.net)}</td>
         <td class="r mono gold">${signed(r.nw)}</td>

@@ -1,11 +1,12 @@
 // Desktop History — Ledger's transaction table (no Type column; amount sign
 // and colour carry it) with Coin's date-group gaps, Ledger's filter bar and
 // pagination, plus a desktop-sized calendar. Search lives in the top bar.
-import { formatMoney, rangeWindow, rangeLabel, dateHeaderLabel, formatDateDMY, localISO, escapeHtml, toast, toastWithAction, sortByDateDesc } from '../helpers.js'
-import { deleteTransaction, addTransaction } from '../supabase.js'
+import { formatMoney, rangeWindow, rangeLabel, dateHeaderLabel, formatDateDMY, localISO, escapeHtml, toast, toastWithAction, sortByDateDesc, confirmDialog } from '../helpers.js'
+import { deleteTransaction } from '../supabase.js'
+import { record, undo, undoLabel, deletedAction } from './undo.js'
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '../categories.js'
 import { icon, categoryIcon } from '../icons.js'
-import { headHtml, paginate, paginationHtml, wirePagination, segHtml, wireSeg } from './ui.js'
+import { headHtml, paginate, paginationHtml, wirePagination, segHtml, wireSeg, catBadge } from './ui.js'
 
 const PER_PAGE = 50
 // module-level like the phone view's filter state: survives re-renders and
@@ -21,19 +22,22 @@ export function getHistorySearch() { return filters.q }
 export function applyHistorySearch() { if (current?.container.isConnected) drawList(current.container, current.opts) }
 
 // ── Shared table (Dashboard's "Recent transactions" uses it too) ──
-function rowHtml(t, { showDate }) {
+function rowHtml(t, { showDate, showTags }) {
   const flags = [
     t.is_credit_card ? `<span class="d-flag" title="Paid by credit card">${icon('creditCard', 12)}</span>` : '',
     t.is_shopee ? `<span class="d-flag" title="Bought on Shopee">${icon('bag', 12)}</span>` : '',
     t.receipt_path ? `<span class="d-flag" title="Has a receipt photo">${icon('paperclip', 12)}</span>` : '',
   ].join('')
+  // vendor and note share one column: vendor on top, note underneath in
+  // grey — or the note alone when no vendor was typed
+  const main = t.subcategory || t.notes || ''
+  const sub = t.subcategory && t.notes ? t.notes : ''
   return `
-    <tr class="click" data-id="${t.id}">
+    <tr class="click ${t.type}" data-id="${t.id}">
       ${showDate ? `<td class="mono dim" style="white-space:nowrap">${formatDateDMY(t.date)}</td>` : ''}
-      <td><span class="d-cat">${categoryIcon(t.category, 12)}${escapeHtml(t.category)}</span></td>
-      <td class="trunc">${t.subcategory ? escapeHtml(t.subcategory) : '<span style="color:var(--text3)">—</span>'}${flags}</td>
-      <td class="trunc dim">${escapeHtml(t.notes || '')}</td>
-      <td class="dim">${(t.tags || []).map(tag => `<span class="d-tag">${escapeHtml(tag)}</span>`).join('')}</td>
+      <td>${catBadge(t.category)}</td>
+      <td class="d-vendor-cell">${main ? `<div class="d-vendor">${escapeHtml(main)}${flags}</div>` : `<div class="d-vendor dim">—${flags}</div>`}${sub ? `<div class="d-vendor-note">${escapeHtml(sub)}</div>` : ''}</td>
+      ${showTags ? `<td class="dim">${(t.tags || []).map(tag => `<span class="d-tag">${escapeHtml(tag)}</span>`).join('')}</td>` : ''}
       <td class="r"><span class="d-amt ${t.type}">${t.type === 'income' ? '+' : '−'}${formatMoney(t.amount)}</span></td>
       <td style="width:70px"><div class="d-row-actions">
         <button class="d-act" data-act="edit" data-id="${t.id}" title="Edit" aria-label="Edit">${icon('pen', 12)}</button>
@@ -44,7 +48,10 @@ function rowHtml(t, { showDate }) {
 
 export function txnTableHtml(list, { groups = true, empty = 'No transactions found.' } = {}) {
   if (!list.length) return `<div class="d-empty">${empty}</div>`
-  const head = `<thead><tr>${groups ? '' : '<th>Date</th>'}<th>Category</th><th>Vendor / note</th><th>Notes</th><th>Tags</th><th class="r">Amount</th><th></th></tr></thead>`
+  // Tags column only when something on this page actually has tags
+  const showTags = list.some(t => t.tags?.length)
+  const cols = (groups ? 0 : 1) + 4 + (showTags ? 1 : 0)
+  const head = `<thead><tr>${groups ? '' : '<th>Date</th>'}<th>Category</th><th>Vendor / note</th>${showTags ? '<th>Tags</th>' : ''}<th class="r">Amount</th><th></th></tr></thead>`
   let body = ''
   if (groups) {
     const byDate = new Map()
@@ -52,12 +59,12 @@ export function txnTableHtml(list, { groups = true, empty = 'No transactions fou
     for (const [date, items] of byDate) {
       const spent = items.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0)
       const earned = items.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0)
-      const total = [spent ? `−${formatMoney(spent)}` : '', earned ? `+${formatMoney(earned)}` : ''].filter(Boolean).join(' · ')
-      body += `<tr class="d-group"><td colspan="6">${dateHeaderLabel(date)}<span class="d-group-total">${total}</span></td></tr>`
-      body += items.map(t => rowHtml(t, { showDate: false })).join('')
+      const total = [spent ? `<span class="neg">−${formatMoney(spent)}</span>` : '', earned ? `<span class="pos">+${formatMoney(earned)}</span>` : ''].filter(Boolean).join(' · ')
+      body += `<tr class="d-group"><td colspan="${cols}">${dateHeaderLabel(date)}<span class="d-group-total">${total}</span></td></tr>`
+      body += items.map(t => rowHtml(t, { showDate: false, showTags })).join('')
     }
   } else {
-    body = list.map(t => rowHtml(t, { showDate: true })).join('')
+    body = list.map(t => rowHtml(t, { showDate: true, showTags })).join('')
   }
   return `<div class="d-table-scroll"><table class="d-table">${head}<tbody>${body}</tbody></table></div>`
 }
@@ -82,9 +89,12 @@ export function wireTxnTable(root, list, { onEdit, onDelete }) {
   })
 }
 
-// Same optimistic delete + Undo as the phone list: mutates the shared txns
-// array in place, redraws, restores on failure; Undo re-adds (new id).
+// Confirm first, then the same optimistic delete as the phone list: mutate
+// the shared txns array, redraw, restore on failure. Goes on the undo stack
+// (Ctrl+Z) and the toast offers Undo too.
 async function deleteTxn(txn, txns, redraw) {
+  const ok = await confirmDialog(`Delete ${txn.category}${txn.subcategory ? ' · ' + txn.subcategory : ''} — ${formatMoney(txn.amount)} on ${formatDateDMY(txn.date)}?`, 'Delete', true)
+  if (!ok) return
   const idx = txns.findIndex(t => t.id === txn.id)
   if (idx === -1) return
   txns.splice(idx, 1)
@@ -97,10 +107,13 @@ async function deleteTxn(txn, txns, redraw) {
     toast(e.message || 'Failed to delete')
     return
   }
-  toastWithAction('Transaction deleted', 'Undo', async () => {
+  const action = deletedAction(txn)
+  record(action)
+  toastWithAction('Transaction deleted — Ctrl+Z to undo', 'Undo', async () => {
     try {
-      const { id: _oldId, created_at, ...rest } = txn
-      txns.push(await addTransaction(rest))
+      if (undoLabel() !== action.label) { toast('Use Ctrl+Z — other changes came after this one'); return }
+      await undo()
+      txns.splice(idx, 0, txn) // shown right away; the next refresh brings its new id
       redraw()
     } catch (e) {
       toast(e.message || 'Failed to restore')
@@ -211,7 +224,7 @@ function drawList(container, opts) {
   const earned = list.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0)
 
   container.querySelector('#hCount').textContent = `${list.length} transaction${list.length === 1 ? '' : 's'}`
-  container.querySelector('#hTotals').textContent = list.length ? `−${formatMoney(Math.round(spent))} · +${formatMoney(Math.round(earned))}` : ''
+  container.querySelector('#hTotals').innerHTML = list.length ? `<span class="neg">−${formatMoney(Math.round(spent))}</span> · <span class="pos">+${formatMoney(Math.round(earned))}</span>` : ''
   container.querySelector('#hClear').style.display = hasFilters ? '' : 'none'
   const tableEl = container.querySelector('#hTable')
   tableEl.innerHTML = txnTableHtml(pg.items, { groups: grouped, empty: hasFilters ? 'No transactions match these filters.' : 'No transactions in this period yet.' })

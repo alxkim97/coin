@@ -365,7 +365,7 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
         await deleteTransaction(editingTxn.id)
         if (editingTxn.receipt_path) deleteReceipt(editingTxn.receipt_path).catch(() => {}) // best-effort — an orphaned file is a much smaller problem than blocking the delete on it
         toast('Deleted')
-        onSaved()
+        onSaved(false, null, { deleted: editingTxn }) // lets the desktop undo stack offer it back
       } catch (e) {
         toast(e.message || 'Failed to delete')
       }

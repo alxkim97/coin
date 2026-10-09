@@ -4,7 +4,7 @@
 // the app); anything that needs wiring has a matching wire*() function.
 import { Chart } from 'chart.js'
 import { formatMoney, formatMoneyAxis, monthLabel, rangeLabel, escapeHtml } from '../helpers.js'
-import { icon } from '../icons.js'
+import { icon, categoryIcon } from '../icons.js'
 
 export function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
@@ -260,4 +260,24 @@ export function monthKeysEnding(year, month, n) {
   const keys = []
   for (let i = n - 1; i >= 0; i--) keys.push(monthKey(new Date(year, month - i, 1)))
   return keys
+}
+
+// One colour per category, used on every badge and donut so a category
+// reads the same everywhere. Mid-tone hues that hold up on both themes;
+// badges tint their background from it (see .d-cat in desktop.css).
+const CATEGORY_COLORS = {
+  Rent: '#4f8ff7', Insurance: '#9d7bff', Internet: '#22b8cf', 'Bank/Finance': '#8a94a6',
+  Food: '#f59f3a', Groceries: '#3fbf6f', Transport: '#3aa0e8', Health: '#ef5d8f', Utilities: '#e3b52f',
+  Investment: '#c9a227', Shopping: '#e45ab8', Social: '#8b6cf0', Travel: '#18b6a4', Education: '#5c6cf0', Other: '#9aa0ab',
+  Salary: '#2fbf71', Reimbursement: '#45a6e6', Bonus: '#e0b43a', Overtime: '#37b39a', 'Investment Returns': '#c9a227',
+}
+const FALLBACK = ['#f07c5a', '#5aa9f0', '#b06cf0', '#4cc38a', '#f0c24c', '#ef6f9f']
+export function catColor(name) {
+  if (CATEGORY_COLORS[name]) return CATEGORY_COLORS[name]
+  let h = 0
+  for (const ch of String(name)) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+  return FALLBACK[h % FALLBACK.length]
+}
+export function catBadge(name, size = 12) {
+  return `<span class="d-cat" style="--cat:${catColor(name)}">${categoryIcon(name, size)}${escapeHtml(name)}</span>`
 }

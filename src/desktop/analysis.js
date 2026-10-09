@@ -10,7 +10,7 @@ import { isPrivacyMode, privacyOverlayHtml } from '../privacy.js'
 import { icon, categoryIcon } from '../icons.js'
 import {
   headHtml, kpiHtml, cardHtml, segHtml, wireSeg, renderChart, baseOptions, chartTheme, cssVar, incomeExpenseConfig,
-  donutConfig, legendHtml, paletteColor, paginate, paginationHtml, wirePagination, monthKey, shortMonth,
+  donutConfig, legendHtml, paletteColor, paginate, paginationHtml, wirePagination, monthKey, shortMonth, catBadge, catColor,
 } from './ui.js'
 
 // session-sticky view state, same pattern as the other views
@@ -175,7 +175,7 @@ function drawCategoryDonuts(container, txns, rows) {
       if (other) other.amount += rest
       else top.push({ label: 'Other', amount: rest })
     }
-    const colors = top.map((r, i) => paletteColor(i, r.label))
+    const colors = top.map(r => catColor(r.label))
     renderChart(key, container.querySelector(canvasId), donutConfig(top.map(r => r.label), top.map(r => r.amount), colors))
     legendEl.innerHTML = legendHtml(top, colors)
   }
@@ -235,14 +235,14 @@ function drawMonthlyTable(container, all) {
         return `<tr class="hover${r.count ? '' : ' d-cell-none'}">
           <td class="mono">${new Date(r.key + '-01T00:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</td>
           <td class="r mono pos">${r.income ? formatMoney(Math.round(r.income)) : '—'}</td>
-          <td class="r mono">${r.expense ? formatMoney(Math.round(r.expense)) : '—'}</td>
+          <td class="r mono neg">${r.expense ? formatMoney(Math.round(r.expense)) : '—'}</td>
           <td class="r mono ${r.count ? (net >= 0 ? 'pos' : 'neg') : ''}">${r.count ? formatMoney(Math.round(net)) : '—'}</td>
           <td class="r mono">${rate}</td>
           <td class="r mono dim">${r.count || '—'}</td>
-          <td>${top ? `<span class="d-cat">${categoryIcon(top[0], 12)}${escapeHtml(top[0])}</span>` : '<span class="dim">no data</span>'}</td>
+          <td>${top ? `${catBadge(top[0])}` : '<span class="dim">no data</span>'}</td>
         </tr>`
       }).join('')}</tbody>
-      <tfoot><tr><td>Total</td><td class="r pos">${formatMoney(Math.round(sum.income))}</td><td class="r">${formatMoney(Math.round(sum.expense))}</td><td class="r ${sum.income - sum.expense >= 0 ? 'pos' : 'neg'}">${formatMoney(Math.round(sum.income - sum.expense))}</td><td class="r">${sum.income ? ((sum.income - sum.expense) / sum.income * 100).toFixed(1) + '%' : '—'}</td><td class="r">${sum.count}</td><td></td></tr></tfoot>
+      <tfoot><tr><td>Total</td><td class="r pos">${formatMoney(Math.round(sum.income))}</td><td class="r neg">${formatMoney(Math.round(sum.expense))}</td><td class="r ${sum.income - sum.expense >= 0 ? 'pos' : 'neg'}">${formatMoney(Math.round(sum.income - sum.expense))}</td><td class="r">${sum.income ? ((sum.income - sum.expense) / sum.income * 100).toFixed(1) + '%' : '—'}</td><td class="r">${sum.count}</td><td></td></tr></tfoot>
     </table></div>
     ${paginationHtml(pg, 'months')}`
   el.querySelector('#aYear').onchange = e => { tableYear = e.target.value; tablePage = 1; drawMonthlyTable(container, all) }
@@ -423,7 +423,7 @@ function drawBills(container, recurring) {
   const el = container.querySelector('#aBills')
   if (!bills.length) { el.innerHTML = '<div class="d-note">No upcoming bills in the next 60 days.</div>'; return }
   el.innerHTML = `
-    ${bills.slice(0, 9).map(b => `<div class="d-list-row"><span class="d-list-meta" style="width:58px">${formatDateDMY(b.date)}</span><span style="color:var(--accent-ink)">${categoryIcon(b.category, 13)}</span><span class="d-list-name">${escapeHtml(b.name)}</span><span class="d-list-val">${formatMoney(b.amount)}</span></div>`).join('')}
+    ${bills.slice(0, 9).map(b => `<div class="d-list-row"><span class="d-list-meta" style="width:58px">${formatDateDMY(b.date)}</span><span style="color:${catColor(b.category)}">${categoryIcon(b.category, 13)}</span><span class="d-list-name">${escapeHtml(b.name)}</span><span class="d-list-val">${formatMoney(b.amount)}</span></div>`).join('')}
     ${bills.length > 9 ? `<div class="d-note" style="margin-top:6px">+ ${bills.length - 9} more</div>` : ''}
     <div class="d-res-row total" style="margin-top:6px"><span class="l">Total due</span><span class="v">${formatMoney(bills[bills.length - 1].runningTotal)}</span></div>`
 }
@@ -588,7 +588,7 @@ function drawReview(container, txns) {
         </div>
         <div>
           <div class="d-label" style="margin-bottom:8px">Top categories</div>
-          ${r.topCategories.length ? r.topCategories.map((c, i) => `<div class="d-list-row"><span class="d-list-meta" style="width:12px">${i + 1}</span><span style="color:var(--accent-ink)">${categoryIcon(c.category, 13)}</span><span class="d-list-name">${escapeHtml(c.category)}</span><span class="d-list-val">${formatMoney(Math.round(c.amount))}</span></div>`).join('') : '<div class="d-note">No expenses logged.</div>'}
+          ${r.topCategories.length ? r.topCategories.map((c, i) => `<div class="d-list-row"><span class="d-list-meta" style="width:12px">${i + 1}</span><span style="color:${catColor(c.category)}">${categoryIcon(c.category, 13)}</span><span class="d-list-name">${escapeHtml(c.category)}</span><span class="d-list-val">${formatMoney(Math.round(c.amount))}</span></div>`).join('') : '<div class="d-note">No expenses logged.</div>'}
         </div>
         <div>
           <div class="d-label" style="margin-bottom:8px">Records this year</div>

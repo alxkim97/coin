@@ -26,6 +26,7 @@ import { renderAnalysisDesktop } from './desktop/analysis.js'
 import { renderSettingsDesktop } from './desktop/settings.js'
 import { renderProjectionDesktop } from './desktop/projection.js'
 import { renderTaxDesktop } from './desktop/tax.js'
+import { record as recordUndo, undo, redo, undoLabel, redoLabel, addedAction, editedAction, deletedAction } from './desktop/undo.js'
 
 applyTheme()
 
@@ -65,10 +66,50 @@ document.addEventListener('keydown', (e) => {
   if (top) top.dispatchEvent(new MouseEvent('click', { bubbles: true }))
 })
 
+// Desktop shortcuts (Ledger's): Ctrl+Z undo, Ctrl+Y / Ctrl+Shift+Z redo,
+// Ctrl+S save whatever form is open. Undo/redo leave text fields alone so
+// the browser's own typing undo still works there.
+const SAVE_BUTTONS = ['#saveBtn', '#bSave', '.pSave', '.aAcctSave', '#nwSave']
+document.addEventListener('keydown', (e) => {
+  if (!isDesktopView() || !state.session || !(e.ctrlKey || e.metaKey)) return
+  const k = e.key.toLowerCase()
+  const typing = e.target.closest?.('input, textarea, select, [contenteditable="true"]')
+  if (k === 's') {
+    e.preventDefault()
+    const btn = SAVE_BUTTONS.map(sel => document.querySelector(sel)).find(b => b && !b.disabled && b.offsetParent)
+    if (btn) btn.click()
+    else toast('Nothing to save on this page')
+    return
+  }
+  if (typing) return
+  if (k === 'z' && !e.shiftKey) { e.preventDefault(); runUndo('undo') }
+  else if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); runUndo('redo') }
+})
+
+async function runUndo(which) {
+  try {
+    const a = await (which === 'undo' ? undo() : redo())
+    if (!a) { toast(which === 'undo' ? 'Nothing to undo' : 'Nothing to redo'); return }
+    toast(`${which === 'undo' ? 'Undid' : 'Redid'} ${a.label}`)
+    await loadData()
+    render()
+  } catch (err) {
+    toast(err.message || `Couldn't ${which}`)
+  }
+}
+
 // Ledger's logo gimmick: click the sidebar logo to cycle it. Index 0 is
 // Coin's own mark; the rest are emoji, remembered per device.
 const LOGO_FACES = [null, '🪙', '💰', '💸', '💵', '🤑', '💎', '📈', '🐷']
 let logoIdx = Number(localStorage.getItem('coin_logo_idx') || 0) % LOGO_FACES.length
+// …and it changes by itself every 30 minutes while the app is open
+setInterval(() => {
+  if (!isDesktopView()) return
+  logoIdx = (logoIdx + 1) % LOGO_FACES.length
+  try { localStorage.setItem('coin_logo_idx', String(logoIdx)) } catch { /* resets next launch */ }
+  const el = document.querySelector('#brandLogo')
+  if (el) { el.innerHTML = logoFaceHtml(); el.classList.remove('spin'); void el.offsetWidth; el.classList.add('spin') }
+}, 30 * 60 * 1000)
 function logoFaceHtml() {
   const face = LOGO_FACES[logoIdx]
   return face ? `<span class="tabbar-brand-emoji">${face}</span>` : '<img src="./favicon.svg" alt="" />'
@@ -351,7 +392,13 @@ function renderImmediate() {
       editingTxn: state.editingTxn,
       recurring: state.recurring,
       txns: state.txns,
-      onSaved: (stayOnAdd, savedTxn) => refreshAndRender(stayOnAdd ? undefined : 'transactions', savedTxn),
+      onSaved: (stayOnAdd, savedTxn, meta) => {
+        // desktop undo/redo: remember what this save or delete changed
+        if (meta?.deleted) recordUndo(deletedAction({ ...meta.deleted, receipt_path: null })) // its receipt file is already gone
+        else if (savedTxn && state.editingTxn) recordUndo(editedAction(state.editingTxn, savedTxn))
+        else if (savedTxn) recordUndo(addedAction(savedTxn))
+        refreshAndRender(stayOnAdd ? undefined : 'transactions', savedTxn)
+      },
       onRecurringChanged: async () => { state.recurring = await fetchRecurring(); render(); return state.recurring },
     })
   } else if (state.view === 'analysis') {
@@ -525,6 +572,10 @@ function renderImmediate() {
       onMonthChange: setMonth,
       onRangeChange: setRange,
       onToggleCustomize: () => { state.customizing = !state.customizing; render() },
+      undoLabel: undoLabel(),
+      redoLabel: redoLabel(),
+      onUndo: () => runUndo('undo'),
+      onRedo: () => runUndo('redo'),
       onTogglePrivacy: () => { setPrivacyMode(!isPrivacyMode()); render() },
       onToggleTheme: (isDark) => { setMode(isDark ? 'light' : 'dark'); render() },
       onAdd: () => { state.customizing = false; setView('add') },

@@ -36,6 +36,11 @@
     --chart-grid: #e4e4ef;
     --surface-glass: var(--surface);
     --shadow-modal: 0 24px 80px rgba(20, 20, 40, .18);
+    --aura-a: transparent;
+    --aura-b: transparent;
+    --kpi-tint: 0%;
+    --glow-alpha: 0%;
+    --card-shadow: none;
     --font-display: 'DM Serif Display', Georgia, serif;
     --font-mono: 'DM Mono', ui-monospace, 'Cascadia Mono', monospace;
     --font-body: 'Outfit', 'Segoe UI', sans-serif;
@@ -45,45 +50,59 @@
   }
 }
 @media (min-width: 860px) and (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"])[data-accent="gold"] { --accent: #e6c056; --accent-weak: #4a3b12; }
+  :root:not([data-theme="light"])[data-accent="gold"] { --accent: #f2c94c; --accent-weak: #4a3b12; }
   :root:not([data-theme="light"]) {
-    --bg: #0f0f11;
-    --surface: #17171a;
-    --surface-2: #1e1e23;
-    --surface-3: #26262d;
-    --border: #2e2e38;
-    --border-2: #3a3a48;
-    --text: #e8e8f0;
-    --text2: #9898b0;
-    --text3: #7c7c94;
-    --green: #3ecf8e;
-    --red: #f76a6a;
-    --amber: #f7c76a;
-    --blue: #6ab4f7;
-    --gold: #e6c056;
-    --emerald: #34d399;
-    --chart-grid: #26262d;
+    --bg: #08080b;
+    --surface: #121217;
+    --surface-2: #1a1a21;
+    --surface-3: #24242d;
+    --border: #282832;
+    --border-2: #383847;
+    --text: #f3f3f8;
+    --text2: #aaaac2;
+    --text3: #84849c;
+    --green: #34e39a;
+    --red: #ff6b6b;
+    --amber: #ffc857;
+    --blue: #63b3ff;
+    --gold: #f2c94c;
+    --emerald: #2ee6a0;
+    --chart-grid: #23232c;
+    /* "aura": soft accent + gold light behind the page, tinted card tops,
+       a faint glow on the big numbers — dark mode only */
+    --aura-a: color-mix(in srgb, var(--accent) 16%, transparent);
+    --aura-b: color-mix(in srgb, var(--gold) 10%, transparent);
+    --kpi-tint: 12%;
+    --glow-alpha: 45%;
+    --card-shadow: inset 0 1px 0 rgba(255, 255, 255, .045), 0 10px 32px rgba(0, 0, 0, .38);
     --shadow-modal: 0 24px 80px rgba(0, 0, 0, .55);
   }
 }
 @media (min-width: 860px) {
   :root[data-theme="dark"] {
-    --bg: #0f0f11;
-    --surface: #17171a;
-    --surface-2: #1e1e23;
-    --surface-3: #26262d;
-    --border: #2e2e38;
-    --border-2: #3a3a48;
-    --text: #e8e8f0;
-    --text2: #9898b0;
-    --text3: #7c7c94;
-    --green: #3ecf8e;
-    --red: #f76a6a;
-    --amber: #f7c76a;
-    --blue: #6ab4f7;
-    --gold: #e6c056;
-    --emerald: #34d399;
-    --chart-grid: #26262d;
+    --bg: #08080b;
+    --surface: #121217;
+    --surface-2: #1a1a21;
+    --surface-3: #24242d;
+    --border: #282832;
+    --border-2: #383847;
+    --text: #f3f3f8;
+    --text2: #aaaac2;
+    --text3: #84849c;
+    --green: #34e39a;
+    --red: #ff6b6b;
+    --amber: #ffc857;
+    --blue: #63b3ff;
+    --gold: #f2c94c;
+    --emerald: #2ee6a0;
+    --chart-grid: #23232c;
+    /* "aura": soft accent + gold light behind the page, tinted card tops,
+       a faint glow on the big numbers — dark mode only */
+    --aura-a: color-mix(in srgb, var(--accent) 16%, transparent);
+    --aura-b: color-mix(in srgb, var(--gold) 10%, transparent);
+    --kpi-tint: 12%;
+    --glow-alpha: 45%;
+    --card-shadow: inset 0 1px 0 rgba(255, 255, 255, .045), 0 10px 32px rgba(0, 0, 0, .38);
     --shadow-modal: 0 24px 80px rgba(0, 0, 0, .55);
   }
 }
@@ -122,7 +141,7 @@
 
   /* Gold as an 8th accent — desktop only (the phone keeps its 7 swatches) */
   :root[data-accent="gold"] { --accent: #9a7000; --accent-weak: #fbf0cf; }
-  :root[data-theme="dark"][data-accent="gold"] { --accent: #e6c056; --accent-weak: #4a3b12; }
+  :root[data-theme="dark"][data-accent="gold"] { --accent: #f2c94c; --accent-weak: #4a3b12; }
 
   html, body {
     font-family: var(--font-body);
@@ -135,7 +154,7 @@
   #app.desk {
     display: grid;
     grid-template-columns: 230px minmax(0, 1fr);
-    grid-template-rows: 56px minmax(0, 1fr);
+    grid-template-rows: 64px minmax(0, 1fr);
     grid-template-areas: "nav header" "nav main";
     height: 100vh;
     height: 100dvh;
@@ -169,7 +188,7 @@
     border-right: 1px solid var(--border);
   }
   #app.desk .tabbar-brand {
-    height: 56px;
+    height: 64px;
     padding: 0 18px;
     margin: 0;
     gap: 10px;
@@ -177,19 +196,19 @@
     flex-shrink: 0;
   }
   #app.desk .tabbar-brand-logo {
-    width: 34px; height: 34px; padding: 5px; flex-shrink: 0; cursor: pointer;
+    width: 42px; height: 42px; padding: 6px; flex-shrink: 0; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     background: linear-gradient(145deg, var(--gold-dim), var(--surface-2));
     border: 1px solid color-mix(in srgb, var(--gold) 45%, var(--border)); border-radius: 9px;
     transition: transform .15s ease, box-shadow .15s ease;
   }
   #app.desk .tabbar-brand-logo:hover { transform: scale(1.08); box-shadow: 0 0 0 3px var(--gold-dim); }
-  #app.desk .tabbar-brand-logo img { width: 22px; height: 22px; display: block; }
-  .tabbar-brand-emoji { font-size: 19px; line-height: 1; }
+  #app.desk .tabbar-brand-logo img { width: 28px; height: 28px; display: block; }
+  .tabbar-brand-emoji { font-size: 24px; line-height: 1; }
   #app.desk .tabbar-brand-logo.spin { animation: logoPop .35s ease; }
   @keyframes logoPop { 0% { transform: scale(.7) rotate(-25deg); } 60% { transform: scale(1.15) rotate(8deg); } 100% { transform: scale(1) rotate(0); } }
-  #app.desk .tabbar-brand-name { font-family: var(--font-display); font-size: 19px; font-weight: 400; letter-spacing: -.3px; line-height: 1.1; }
-  #app.desk .tabbar-brand-sub { display: block; font-family: var(--font-mono); font-size: 9.5px; color: var(--text3); letter-spacing: .4px; }
+  #app.desk .tabbar-brand-name { font-family: var(--font-display); font-size: 25px; font-weight: 400; letter-spacing: -.3px; line-height: 1; }
+  #app.desk .tabbar-brand-sub { display: block; font-family: var(--font-mono); font-size: 9.5px; color: var(--text3); letter-spacing: .4px; margin-top: 3px; }
   #app.desk .tabbar-nav { padding: 10px 10px 6px; display: flex; flex-direction: column; flex: 1; min-height: 0; }
   #app.desk .nav-label {
     font-family: var(--font-body);
@@ -232,7 +251,7 @@
   #app.desk .sms-row { font-size: 11px; padding: 2px 0; align-items: center; }
   #app.desk .sms-key { color: var(--text3); font-size: 10.5px; }
   #app.desk .sms-val { font-family: var(--font-mono); font-size: 11px; font-weight: 500; }
-  #app.desk .sidebar-nw-total { font-family: var(--font-mono); font-size: 16px; font-weight: 500; margin-top: 2px; }
+  #app.desk .sidebar-nw-total { font-family: var(--font-mono); font-size: 19px; font-weight: 500; margin-top: 3px; letter-spacing: -.3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 0 18px color-mix(in srgb, var(--gold) var(--glow-alpha), transparent); }
   #app.desk .sidebar-nw-panel .privacy-toggle-btn { width: 22px; height: 22px; color: var(--text3); }
   /* the version already sits under the logo, Ledger-style */
   #app.desk .tabbar-footer { display: none; }
@@ -720,6 +739,51 @@
   .qa-col textarea { min-height: 70px; resize: vertical; }
   .qa-actions { flex-direction: row !important; }
   .qa-actions .btn { width: auto; flex: 1; }
+
+
+  /* ── Round 3: colours + aura ── */
+  #app.desk > .screen {
+    background:
+      radial-gradient(1100px 520px at 0% -8%, var(--aura-a), transparent 62%),
+      radial-gradient(900px 480px at 100% -4%, var(--aura-b), transparent 60%),
+      var(--bg);
+    background-attachment: fixed;
+  }
+  .d-card, .d-kpi, .d-table-card, .d-set-card, .qa-col { box-shadow: var(--card-shadow); }
+  .d-kpi { background: linear-gradient(180deg, color-mix(in srgb, var(--kpi, var(--accent)) var(--kpi-tint), var(--surface)) 0%, var(--surface) 72%); }
+  .d-kpi-val { text-shadow: 0 0 20px color-mix(in srgb, var(--kpi, var(--accent)) var(--glow-alpha), transparent); }
+
+  /* expense = red, income = green, everywhere a transaction amount shows */
+  .d-amt.expense { color: var(--red); }
+  .d-amt.income { color: var(--green); }
+  .d-table tr.click.income td:first-child, .d-table tr.click.expense td:first-child { box-shadow: inset 3px 0 0 var(--row-mark); }
+  .d-table tr.click.income { --row-mark: var(--green); }
+  .d-table tr.click.expense { --row-mark: color-mix(in srgb, var(--red) 70%, transparent); }
+
+  /* category colour on badges + icons */
+  .d-cat {
+    background: color-mix(in srgb, var(--cat, var(--text3)) 15%, var(--surface));
+    color: color-mix(in srgb, var(--cat, var(--text3)) 62%, var(--text));
+    border: 1px solid color-mix(in srgb, var(--cat, var(--text3)) 28%, transparent);
+    font-weight: 500;
+  }
+  .d-cat .ico { color: var(--cat, var(--accent-ink)); }
+  .d-budget-name .ico { color: var(--cat, var(--accent-ink)); }
+
+  /* vendor + note in one column */
+  .d-vendor { display: flex; align-items: center; gap: 2px; font-size: 13px; max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .d-vendor-note { font-size: 11px; color: var(--text3); margin-top: 1px; max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* net worth card: one big number */
+  .d-nw-big {
+    font-family: var(--font-mono); font-size: 30px; font-weight: 500; letter-spacing: -.8px; line-height: 1.1;
+    color: var(--gold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px;
+    text-shadow: 0 0 24px color-mix(in srgb, var(--gold) var(--glow-alpha), transparent);
+  }
+  .d-nw-split { display: flex; height: 6px; border-radius: 6px; overflow: hidden; gap: 2px; margin-top: 14px; }
+  .d-nw-split span { min-width: 4px; }
+  .d-nw-legend { display: flex; gap: 12px; margin-top: 7px; font-size: 10.5px; color: var(--text3); }
+  .d-nw-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; vertical-align: 0; }
 
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }

@@ -5,7 +5,7 @@ import { EXPENSE_CATEGORIES, BUDGET_TYPE_ORDER } from '../categories.js'
 import { upsertBudget, savePushSubscription } from '../supabase.js'
 import { formatMoney, toast, monthLabel, suggestionBasis, urlBase64ToUint8Array, escapeHtml } from '../helpers.js'
 import { icon, categoryIcon } from '../icons.js'
-import { headHtml, kpiHtml, barHtml, statusClass, cardHtml, renderChart, donutConfig, legendHtml, cssVar, monthKey, shortMonth } from './ui.js'
+import { headHtml, kpiHtml, barHtml, statusClass, cardHtml, renderChart, donutConfig, legendHtml, cssVar, monthKey, shortMonth, catBadge, catColor } from './ui.js'
 
 // same public VAPID key as views/budget.js — the public half is safe to ship
 // and must match VAPID_PRIVATE_KEY on the server (api/check-budget-alerts.js)
@@ -144,16 +144,16 @@ function typeCardHtml(type, cats, { limitOf, spent, basis }) {
     if (editing) {
       return `
         <div class="d-budget-row editing">
-          <span class="d-budget-name">${categoryIcon(cat, 13)}${escapeHtml(cat)}</span>
+          <span class="d-budget-name" style="--cat:${catColor(cat)}">${categoryIcon(cat, 13)}${escapeHtml(cat)}</span>
           <span class="d-list-meta">spent ${formatMoney(Math.round(sp))}</span>
           ${sug !== undefined && sug !== lim ? `<button class="d-link bUseSug" data-cat="${escapeHtml(cat)}" data-v="${sug}" title="Use the suggestion">use ${formatMoney(sug)}</button>` : '<span></span>'}
           <input class="bLimit mono" type="number" min="0" step="100" inputmode="decimal" placeholder="0" data-cat="${escapeHtml(cat)}" value="${escapeHtml(String(draft[cat] ?? ''))}" aria-label="${escapeHtml(cat)} limit" />
         </div>`
     }
-    if (!lim && !sp) return `<div class="d-budget-row none"><span class="d-budget-name">${categoryIcon(cat, 13)}${escapeHtml(cat)}</span><span class="d-list-meta">no limit · nothing spent</span></div>`
+    if (!lim && !sp) return `<div class="d-budget-row none"><span class="d-budget-name" style="--cat:${catColor(cat)}">${categoryIcon(cat, 13)}${escapeHtml(cat)}</span><span class="d-list-meta">no limit · nothing spent</span></div>`
     return `
       <div class="d-budget-row">
-        <div class="d-meter-top"><span class="n d-budget-name">${categoryIcon(cat, 13)}${escapeHtml(cat)}</span><span class="v">${formatMoney(Math.round(sp))} <small>/ ${lim ? formatMoney(lim) : 'no limit'}</small></span></div>
+        <div class="d-meter-top"><span class="n d-budget-name" style="--cat:${catColor(cat)}">${categoryIcon(cat, 13)}${escapeHtml(cat)}</span><span class="v">${formatMoney(Math.round(sp))} <small>/ ${lim ? formatMoney(lim) : 'no limit'}</small></span></div>
         ${barHtml(lim ? sp / lim * 100 : 0, statusClass(sp, lim))}
         ${lim ? `<div class="d-bar-labels"><span>${sp > lim ? `${formatMoney(Math.round(sp - lim))} over` : `${formatMoney(Math.round(lim - sp))} left`}</span><span>${Math.round(sp / lim * 100)}%</span></div>` : ''}
       </div>`
@@ -178,7 +178,7 @@ function suggestionCardHtml(basis, limits) {
       ${cats.length ? `<div class="d-table-scroll"><table class="d-table">
         <thead><tr><th>Category</th>${basis.months.map(k => `<th class="r">${shortMonth(k)}</th>`).join('')}<th class="r">Average</th><th class="r">Suggested</th><th class="r">Your limit</th></tr></thead>
         <tbody>${cats.map(([cat, v]) => `<tr class="hover">
-          <td><span class="d-cat">${categoryIcon(cat, 12)}${escapeHtml(cat)}</span></td>
+          <td>${catBadge(cat)}</td>
           ${basis.months.map(k => `<td class="r mono dim">${formatMoney(Math.round(v.byMonth[k]))}</td>`).join('')}
           <td class="r mono">${formatMoney(Math.round(v.avg))}</td>
           <td class="r mono gold">${formatMoney(v.suggested)}</td>
@@ -231,7 +231,7 @@ function historyHtml(h, limits) {
       </div>
       <div class="d-table-scroll"><table class="d-table">
         <thead><tr><th>Category</th><th class="r">Limit</th>${h.months.map(k => `<th class="r">${shortMonth(k)}${k === curKey ? ' <span class="d-pill info">so far</span>' : ''}</th>`).join('')}</tr></thead>
-        <tbody>${h.cats.map(c => `<tr class="hover"><td><span class="d-cat">${categoryIcon(c, 12)}${escapeHtml(c)}</span></td><td class="r mono dim">${formatMoney(limits[c])}</td>${h.months.map(k => cell(h.spend[k]?.[c] || 0, limits[c])).join('')}</tr>`).join('')}</tbody>
+        <tbody>${h.cats.map(c => `<tr class="hover"><td>${catBadge(c)}</td><td class="r mono dim">${formatMoney(limits[c])}</td>${h.months.map(k => cell(h.spend[k]?.[c] || 0, limits[c])).join('')}</tr>`).join('')}</tbody>
         <tfoot><tr><td>All budgeted</td><td class="r">${formatMoney(h.limTotal)}</td>${h.totals.map(t => `<td class="r ${t.s > h.limTotal ? 'neg' : 'pos'}">${formatMoney(Math.round(t.s))}</td>`).join('')}</tr></tfoot>
       </table></div>
       <div class="d-note" style="padding:8px 16px 12px">Past months are compared with today's limits — Coin doesn't keep a record of what each limit used to be.</div>

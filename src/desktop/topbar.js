@@ -24,6 +24,9 @@ export function renderTopbar(el, opts) {
     <div class="desk-topbar-right">
       ${hasPeriod ? periodHtml({ year, month, range, txns, showRange: PERIOD_VIEWS[view] }) + '<div class="desk-sep"></div>' : ''}
       ${view === 'dashboard' ? `<button class="d-btn ${customizing ? 'active' : ''}" id="deskCustomize" title="Rearrange or hide dashboard widgets">${icon('layers', 13)}<span class="lbl">Customize</span></button>` : ''}
+      <button class="d-btn icon-only" id="deskUndo" ${opts.undoLabel ? '' : 'disabled'} title="${opts.undoLabel ? `Undo ${escapeHtml(opts.undoLabel)} (Ctrl+Z)` : 'Nothing to undo'}" aria-label="Undo">${icon('undo', 14)}</button>
+      <button class="d-btn icon-only" id="deskRedo" ${opts.redoLabel ? '' : 'disabled'} title="${opts.redoLabel ? `Redo ${escapeHtml(opts.redoLabel)} (Ctrl+Y)` : 'Nothing to redo'}" aria-label="Redo">${icon('redo', 14)}</button>
+      <div class="desk-sep"></div>
       <button class="d-btn icon-only" id="deskPrivacy" title="${privacyOn ? 'Show balances' : 'Hide balances'}" aria-pressed="${privacyOn}">${icon(privacyOn ? 'eyeOff' : 'eye', 14)}</button>
       <button class="d-btn icon-only" id="deskTheme" title="Switch to ${dark ? 'light' : 'dark'} mode">${icon(dark ? 'sun' : 'moon', 14)}</button>
       <div class="desk-sep"></div>
@@ -34,6 +37,8 @@ export function renderTopbar(el, opts) {
   if (hasPeriod) wirePeriod(el, opts)
   el.querySelector('#deskCustomize')?.addEventListener('click', opts.onToggleCustomize)
   el.querySelector('#deskPrivacy').onclick = opts.onTogglePrivacy
+  el.querySelector('#deskUndo').onclick = opts.onUndo
+  el.querySelector('#deskRedo').onclick = opts.onRedo
   el.querySelector('#deskTheme').onclick = () => opts.onToggleTheme(dark)
   el.querySelector('#deskAdd').onclick = opts.onAdd
   el.querySelector('#deskSearch').oninput = e => opts.onSearch(e.target.value)
