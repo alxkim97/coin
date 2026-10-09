@@ -16,6 +16,9 @@ export default defineConfig({
   },
   server: {
     host: true, // expose on LAN so it's reachable from your phone during dev
+    // electron-builder writes temp files into release/ while packaging — the
+    // dev server's watcher crashed on one (EPERM), so leave build output alone
+    watch: { ignored: ['**/release/**', '**/dist/**'] },
   },
   plugins: [
     VitePWA({
