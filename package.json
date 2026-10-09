@@ -1,6 +1,6 @@
 {
   "name": "coin",
-  "version": "0.7.6",
+  "version": "0.7.7",
   "private": true,
   "type": "module",
   "main": "main.cjs",
@@ -14,8 +14,8 @@
     "electron:build": "vite build && electron-builder --win --x64"
   },
   "devDependencies": {
-    "electron": "^31.7.7",
-    "electron-builder": "^24.13.3",
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
     "vite": "^8.1.1",
     "workbox-precaching": "^7.4.1"
   },

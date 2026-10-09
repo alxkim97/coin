@@ -14,6 +14,22 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
+  // Libraries in their own long-lived files: they rarely change, so after a
+  // deploy the PWA only re-downloads Coin's own code, not ~450 kB of
+  // Chart.js/Supabase it already has cached.
+  build: {
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            { name: 'charts', test: /node_modules[\\/](chart\.js|@kurkle)/ },
+            { name: 'supabase', test: /node_modules[\\/]@supabase/ },
+            { name: 'vendor', test: /node_modules/ },
+          ],
+        },
+      },
+    },
+  },
   server: {
     host: true, // expose on LAN so it's reachable from your phone during dev
     // electron-builder writes temp files into release/ while packaging — the

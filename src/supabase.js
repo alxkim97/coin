@@ -44,13 +44,23 @@ export async function updateDisplayName(name) {
 
 /* ── Transactions ── */
 
+// Supabase caps every request at 1000 rows by default, so a single select
+// silently dropped the oldest transactions once there were more than that —
+// including from backups/CSV exports. Page through until a short page comes
+// back. id is the final tiebreaker so pages never overlap or skip rows.
+const PAGE_SIZE = 1000
 export async function fetchTransactions({ from, to } = {}) {
-  let q = supa.from('coin_transactions').select('*').order('date', { ascending: false }).order('created_at', { ascending: false })
-  if (from) q = q.gte('date', from)
-  if (to) q = q.lte('date', to)
-  const { data, error } = await q
-  if (error) throw error
-  return data
+  const all = []
+  for (let start = 0; ; start += PAGE_SIZE) {
+    let q = supa.from('coin_transactions').select('*')
+      .order('date', { ascending: false }).order('created_at', { ascending: false }).order('id', { ascending: true })
+    if (from) q = q.gte('date', from)
+    if (to) q = q.lte('date', to)
+    const { data, error } = await q.range(start, start + PAGE_SIZE - 1)
+    if (error) throw error
+    all.push(...data)
+    if (data.length < PAGE_SIZE) return all
+  }
 }
 
 export async function addTransaction(txn) {
@@ -118,6 +128,16 @@ export async function updateRecurring(id, patch) {
   const { data, error } = await supa.from('coin_recurring').update(patch).eq('id', id).select().single()
   if (error) throw error
   return data
+}
+
+// Moves next_due forward only if it still holds the value this device saw.
+// Returns false when another device (phone + desktop both opening on a due
+// date) already moved it — that device is posting the period, so skip it.
+export async function claimRecurringPeriod(id, expectedNextDue, newNextDue) {
+  const { data, error } = await supa.from('coin_recurring')
+    .update({ next_due: newNextDue }).eq('id', id).eq('next_due', expectedNextDue).select('id')
+  if (error) throw error
+  return data.length > 0
 }
 
 export async function deleteRecurring(id) {
@@ -257,6 +277,34 @@ export async function getReceiptUrl(path) {
 export async function deleteReceipt(path) {
   const { error } = await supa.storage.from('receipts').remove([path])
   if (error) throw error
+}
+
+// Swipe-delete and desktop History delete keep the receipt file so Undo can
+// bring the transaction back with its photo — this sweeps up files no
+// transaction points at anymore. Only files over a day old, so an upload
+// whose receipt_path update is still landing (or one on another device) is
+// never touched. knownPaths must be the complete transaction list.
+export async function sweepOrphanReceipts(knownPaths) {
+  const { data: { user } } = await supa.auth.getUser()
+  if (!user) return 0
+  const keep = new Set(knownPaths)
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000
+  const orphans = []
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await supa.storage.from('receipts').list(user.id, { limit: 1000, offset })
+    if (error) throw error
+    for (const f of data) {
+      const path = `${user.id}/${f.name}`
+      if (!f.id || keep.has(path)) continue // no id = a folder placeholder, not a file
+      if (new Date(f.created_at).getTime() < cutoff) orphans.push(path)
+    }
+    if (data.length < 1000) break
+  }
+  if (orphans.length) {
+    const { error } = await supa.storage.from('receipts').remove(orphans)
+    if (error) throw error
+  }
+  return orphans.length
 }
 
 // Restore-only, additive-only (see bulkInsertTransactions). Reuses

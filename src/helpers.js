@@ -314,6 +314,12 @@ export function cacheData(txns, budgets) {
   }
 }
 
+// On sign-out — the offline copy is real financial data and shouldn't
+// outlive the session on a shared computer.
+export function clearCachedData() {
+  try { localStorage.removeItem(CACHE_KEY) } catch { /* storage unavailable — nothing cached either */ }
+}
+
 export function getCachedData() {
   try {
     const raw = JSON.parse(localStorage.getItem(CACHE_KEY))

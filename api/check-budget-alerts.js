@@ -11,10 +11,17 @@ function isAuthorized(req) {
   return req.headers.authorization === `Bearer ${expected}`
 }
 
-function currentMonthKey() {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+// Bangkok time, not the server's UTC — Vercel runs in UTC, and the month
+// boundary should match the one the app shows.
+function bangkokToday() {
+  return new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10)
 }
+
+// 90% and 100% are separate alerts, deduped separately. The 90% one keeps the
+// plain category as its dedupe key (what rows sent before this change use);
+// 100% gets a suffix, so no schema change is needed.
+const OVER_SUFFIX = '::100'
+const PAGE_SIZE = 1000
 
 export default async function handler(req, res) {
   if (!isAuthorized(req)) { res.status(401).json({ error: 'unauthorized' }); return }
@@ -30,7 +37,8 @@ export default async function handler(req, res) {
   if (!vapidPublic || !vapidPrivate || !vapidSubject) { res.status(500).json({ error: 'VAPID keys not set' }); return }
   webpush.setVapidDetails(vapidSubject, vapidPublic, vapidPrivate)
 
-  const month = currentMonthKey()
+  const today = bangkokToday()
+  const month = today.slice(0, 7)
   const monthStart = `${month}-01`
 
   const { data: subs, error: subsErr } = await supa.from('coin_push_subscriptions').select('*')
@@ -43,23 +51,33 @@ export default async function handler(req, res) {
   if (budgetsErr) { res.status(500).json({ error: budgetsErr.message }); return }
   if (!budgets?.length) { res.status(200).json({ sent: 0, note: 'no budgets set' }); return }
 
-  const { data: txns, error: txnsErr } = await supa
-    .from('coin_transactions')
-    .select('user_id, category, amount')
-    .in('user_id', userIds)
-    .eq('type', 'expense')
-    .gte('date', monthStart)
-  if (txnsErr) { res.status(500).json({ error: txnsErr.message }); return }
+  // Paged — Supabase returns at most 1000 rows per request. Up to today only,
+  // so future-dated entries don't count toward this month's spend yet.
+  const txns = []
+  for (let start = 0; ; start += PAGE_SIZE) {
+    const { data, error: txnsErr } = await supa
+      .from('coin_transactions')
+      .select('user_id, category, amount')
+      .in('user_id', userIds)
+      .eq('type', 'expense')
+      .gte('date', monthStart)
+      .lte('date', today)
+      .order('id')
+      .range(start, start + PAGE_SIZE - 1)
+    if (txnsErr) { res.status(500).json({ error: txnsErr.message }); return }
+    txns.push(...data)
+    if (data.length < PAGE_SIZE) break
+  }
 
-  // One alert per user/category/month, ever — the dedupe table's primary
-  // key enforces this, checked here before spending any web-push calls.
+  // At most one 90% and one 100% alert per user/category/month — the dedupe
+  // table's primary key enforces this, checked here before any web-push calls.
   const { data: alreadySent, error: sentErr } = await supa
     .from('coin_budget_alerts_sent').select('user_id, category').eq('month', month)
   if (sentErr) { res.status(500).json({ error: sentErr.message }); return }
   const alreadySentSet = new Set((alreadySent || []).map(a => `${a.user_id}::${a.category}`))
 
   const spendByKey = new Map()
-  for (const t of txns || []) {
+  for (const t of txns) {
     const key = `${t.user_id}::${t.category}`
     spendByKey.set(key, (spendByKey.get(key) || 0) + Number(t.amount))
   }
@@ -67,13 +85,18 @@ export default async function handler(req, res) {
   const toAlert = []
   for (const b of budgets) {
     const key = `${b.user_id}::${b.category}`
-    if (alreadySentSet.has(key)) continue
     const limit = Number(b.monthly_limit)
     if (limit <= 0) continue
     const pct = ((spendByKey.get(key) || 0) / limit) * 100
-    if (pct >= 90) toAlert.push({ user_id: b.user_id, category: b.category, pct })
+    if (pct < 90) continue
+    const over = pct >= 100
+    if (alreadySentSet.has(over ? key + OVER_SUFFIX : key)) continue
+    // crossing 100% also marks 90% as done, so a later run never sends the
+    // weaker "at 90%" message after "over budget"
+    const dedupeKeys = over ? [b.category + OVER_SUFFIX, b.category] : [b.category]
+    toAlert.push({ user_id: b.user_id, category: b.category, pct, over, dedupeKeys })
   }
-  if (!toAlert.length) { res.status(200).json({ sent: 0, note: 'nothing crossed 90% this month' }); return }
+  if (!toAlert.length) { res.status(200).json({ sent: 0, note: 'nothing new crossed 90% or 100% this month' }); return }
 
   const subsByUser = new Map()
   for (const s of subs) {
@@ -86,10 +109,9 @@ export default async function handler(req, res) {
   for (const alert of toAlert) {
     const userSubs = subsByUser.get(alert.user_id) || []
     if (!userSubs.length) continue
-    const over = alert.pct >= 100
     const payload = JSON.stringify({
       title: 'Coin — Budget Alert',
-      body: over
+      body: alert.over
         ? `${alert.category} is over budget this month (${Math.round(alert.pct)}%).`
         : `${alert.category} is at ${Math.round(alert.pct)}% of its budget this month.`,
     })
@@ -107,7 +129,7 @@ export default async function handler(req, res) {
         }
       }
     }
-    if (delivered) dedupeRows.push({ user_id: alert.user_id, category: alert.category, month })
+    if (delivered) for (const category of alert.dedupeKeys) dedupeRows.push({ user_id: alert.user_id, category, month })
   }
 
   if (dedupeRows.length) {

@@ -97,8 +97,8 @@ function reviewContentHtml(review) {
       ${review.personalRecords.length ? review.personalRecords.map(r => `
         <div class="record-card">
           <div class="record-icon">${icon(r.icon, 22)}</div>
-          <div class="record-val">${r.value}</div>
-          <div class="record-lbl">${r.label}</div>
+          <div class="record-val">${escapeHtml(String(r.value))}</div>
+          <div class="record-lbl">${escapeHtml(r.label)}</div>
           <div class="record-date">${r.date ? formatDateDMY(r.date) : (r.dateLabel || '')}</div>
         </div>
       `).join('') : '<div class="empty-state">Not enough data for records this year.</div>'}

@@ -286,6 +286,9 @@ function renderEdit(container, opts, { limits, basis, byType }) {
 }
 
 async function enableAlerts() {
+  // The installed desktop app loads from file://, where service workers (and
+  // so push) can't run — navigator.serviceWorker.ready would wait forever.
+  if (window.electronAPI?.isElectron) { toast('Budget alerts work in the browser or phone version of Coin — turn them on there'); return }
   if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
     toast("This browser doesn't support push notifications")
     return

@@ -412,12 +412,15 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
         try {
           await deleteReceipt(receiptPath)
           await updateTransaction(savedTxn.id, { receipt_path: null })
+          savedTxn = { ...savedTxn, receipt_path: null }
         } catch (e) {
           msg += ' — but removing the receipt failed'
         }
       } else if (receiptFile) {
         try {
-          await uploadReceipt(savedTxn.id, receiptFile)
+          // savedTxn predates the upload — carry the new path so the list
+          // shows the receipt badge right away, not after the next refresh
+          savedTxn = { ...savedTxn, receipt_path: await uploadReceipt(savedTxn.id, receiptFile) }
           // replacing an existing receipt — best-effort cleanup of the old
           // file, after the new one is confirmed uploaded, not before
           if (receiptPath) deleteReceipt(receiptPath).catch(() => {})

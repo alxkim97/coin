@@ -13,7 +13,16 @@ const listeners = new Set()
 const notify = () => listeners.forEach(fn => fn())
 export function onUndoChange(fn) { listeners.add(fn); return () => listeners.delete(fn) }
 export function undoLabel() { return undoStack[undoStack.length - 1]?.label || null }
+// identity, not label — two deletes of the same category and amount share a label
+export function isTopUndo(action) { return undoStack[undoStack.length - 1] === action }
 export function redoLabel() { return redoStack[redoStack.length - 1]?.label || null }
+
+// sign-out: another account's actions must never be replayable
+export function clearUndo() {
+  undoStack.length = 0
+  redoStack.length = 0
+  notify()
+}
 
 export function record(action) {
   undoStack.push(action)
@@ -62,11 +71,15 @@ export function editedAction(before, after) {
   }
 }
 
+// restored holds the re-added row (new id) after an undo, so a caller that
+// shows it straight away can use the real id instead of the deleted one
 export function deletedAction(txn) {
   let id = txn.id
-  return {
+  const action = {
     label: `delete ${describe(txn)}`,
-    undo: async () => { id = (await addTransaction(pick(txn))).id },
+    restored: null,
+    undo: async () => { action.restored = await addTransaction(pick(txn)); id = action.restored.id },
     redo: () => deleteTransaction(id),
   }
+  return action
 }

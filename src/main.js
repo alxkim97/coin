@@ -1,6 +1,6 @@
 import './style.css'
 import './desktop.css'
-import { getSession, onAuthChange, fetchTransactions, fetchBudgets, fetchRecurring, addTransaction, updateRecurring, fetchNetWorth, fetchSuggestions, fetchGoals, fetchProjectionEvents } from './supabase.js'
+import { getSession, onAuthChange, fetchTransactions, fetchBudgets, fetchRecurring, addTransaction, claimRecurringPeriod, fetchNetWorth, fetchSuggestions, fetchGoals, fetchProjectionEvents, sweepOrphanReceipts } from './supabase.js'
 import { renderAuth } from './views/auth.js'
 import { renderQuickAdd } from './views/quickAdd.js'
 import { renderTransactions } from './views/transactions.js'
@@ -11,7 +11,7 @@ import { renderAsk } from './views/ask.js'
 import { renderBudget } from './views/budget.js'
 import { icon } from './icons.js'
 import { openNetWorthCheckins } from './netWorthCheckins.js'
-import { toast, cacheData, getCachedData, todayISO, advanceDate, sortByDateDesc, formatMoney } from './helpers.js'
+import { toast, cacheData, getCachedData, clearCachedData, todayISO, advanceDate, sortByDateDesc, formatMoney } from './helpers.js'
 import { categoryBudgetType } from './categories.js'
 import { applyTheme, setMode } from './theme.js'
 import { initUpdateReload } from './swUpdate.js'
@@ -28,7 +28,7 @@ import { renderAnalysisDesktop } from './desktop/analysis.js'
 import { renderSettingsDesktop } from './desktop/settings.js'
 import { renderProjectionDesktop } from './desktop/projection.js'
 import { renderTaxDesktop } from './desktop/tax.js'
-import { record as recordUndo, undo, redo, undoLabel, redoLabel, addedAction, editedAction, deletedAction } from './desktop/undo.js'
+import { record as recordUndo, clearUndo, undo, redo, undoLabel, redoLabel, addedAction, editedAction, deletedAction } from './desktop/undo.js'
 
 applyTheme()
 
@@ -210,21 +210,10 @@ async function loadProjectionEvents() {
 // Posts any 'auto' repeat purchase whose next_due date has arrived as a real
 // transaction, then advances next_due — looping per item in case the app was
 // closed across more than one period (e.g. monthly rent, two months unopened).
-// addTransaction for a period has already succeeded by the time this runs —
-// a transient failure here (unlike addTransaction failing) would leave
-// next_due stale and cause that same period to be reposted as a duplicate on
-// the next launch, so it's worth a couple of retries before giving up.
-async function updateRecurringWithRetry(id, patch, attempts = 3) {
-  for (let i = 1; i <= attempts; i++) {
-    try {
-      return await updateRecurring(id, patch)
-    } catch (e) {
-      if (i === attempts) throw e
-      await new Promise(r => setTimeout(r, 500 * i))
-    }
-  }
-}
-
+// Each period is claimed first (next_due moved forward only if no other
+// device already did) and posted second, so phone + desktop opening on the
+// same due date can't both post it. If the post then fails, the claim is
+// handed back so the next launch retries that period.
 async function processRecurring() {
   try {
     state.recurring = await fetchRecurring()
@@ -241,23 +230,27 @@ async function processRecurring() {
     let nextDue = r.next_due
     try {
       while (nextDue <= today) {
-        await addTransaction({
-          type: r.type,
-          amount: r.amount,
-          date: nextDue,
-          category: r.category,
-          subcategory: r.subcategory,
-          notes: r.notes,
-          budget_type: r.type === 'expense' ? categoryBudgetType(r.category) : null,
-          is_credit_card: r.is_credit_card || false,
-          is_shopee: r.is_shopee || false,
-        })
+        const periodDate = nextDue
+        const following = advanceDate(periodDate, r.frequency)
+        if (!(await claimRecurringPeriod(r.id, periodDate, following))) break // another device has it
+        nextDue = following
+        try {
+          await addTransaction({
+            type: r.type,
+            amount: r.amount,
+            date: periodDate,
+            category: r.category,
+            subcategory: r.subcategory,
+            notes: r.notes,
+            budget_type: r.type === 'expense' ? categoryBudgetType(r.category) : null,
+            is_credit_card: r.is_credit_card || false,
+            is_shopee: r.is_shopee || false,
+          })
+        } catch (e) {
+          await claimRecurringPeriod(r.id, following, periodDate).catch(() => {}) // hand the period back for next launch
+          throw e
+        }
         logged++
-        nextDue = advanceDate(nextDue, r.frequency)
-        // persist progress after every period, not just at the end — if a
-        // later period in this same item fails, we don't want the next
-        // launch re-posting the ones that already succeeded as duplicates
-        await updateRecurringWithRetry(r.id, { next_due: nextDue })
       }
     } catch (e) {
       failed = true
@@ -271,6 +264,16 @@ async function processRecurring() {
     await loadData()
     state.recurring = await fetchRecurring()
   }
+}
+
+// Drops everything tied to the old account — in-memory data, the offline
+// cache, and the desktop undo stack — so a different sign-in on this device
+// never sees (or replays) the previous account's data.
+function signedOut() {
+  state.session = null
+  Object.assign(state, { txns: [], budgets: [], recurring: [], networth: [], suggestions: [], goals: [], projectionEvents: [], editingTxn: null, customizing: false, view: 'dashboard' })
+  clearCachedData()
+  clearUndo()
 }
 
 function setView(view, opts = {}) {
@@ -328,9 +331,11 @@ async function refreshAndRender(nextView, savedTxn) {
 // swap in browsers without support, and is skipped outright when the person
 // has asked their OS for reduced motion (motion.md: "make motion optional").
 function render() {
-  const skip = !document.startViewTransition || window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  // hidden too: the browser aborts transitions in a hidden page (still
+  // running the render, but rejecting with an uncaught InvalidStateError)
+  const skip = !document.startViewTransition || document.hidden || window.matchMedia('(prefers-reduced-motion: reduce)').matches
   if (skip) renderImmediate()
-  else document.startViewTransition(() => renderImmediate())
+  else document.startViewTransition(() => renderImmediate()).ready.catch(() => {}) // a skipped/interrupted animation isn't an error
 }
 
 function renderImmediate() {
@@ -440,7 +445,7 @@ function renderImmediate() {
       goals: state.goals,
       session: state.session,
       onSessionChanged: async () => { state.session = await getSession(); render() },
-      onSignedOut: () => { state.session = null; render() },
+      onSignedOut: () => { signedOut(); render() },
       // backup restore can touch all five tables at once — one combined
       // refresh instead of chaining the single-table callbacks above
       onDataRestored: async () => { await loadData(); await loadNetWorth(); await loadGoals(); render() },
@@ -620,6 +625,8 @@ initUpdateReload({ isBusy: () => state.view === 'add' })
 async function boot() {
   state.session = await getSession()
   onAuthChange((session) => {
+    // signed out elsewhere or the session expired — back to the sign-in screen
+    if (!session && state.session) { signedOut(); render(); return }
     state.session = session
   })
   if (state.session) {
@@ -635,6 +642,21 @@ async function boot() {
   }
   state.loading = false
   render()
+  if (state.session) sweepReceiptsWeekly()
+}
+
+// Background, at most weekly per device, and only after a fresh (not
+// offline-cached) load — the sweep keeps files the transaction list points
+// at, so it must see the whole list. Failures are silent: an orphaned photo
+// costs a little storage, nothing more.
+const SWEEP_KEY = 'coin_receipt_sweep_at'
+async function sweepReceiptsWeekly() {
+  try {
+    if (Date.now() - Number(localStorage.getItem(SWEEP_KEY) || 0) < 7 * 24 * 60 * 60 * 1000) return
+    const txns = await fetchTransactions()
+    await sweepOrphanReceipts(txns.map(t => t.receipt_path).filter(Boolean))
+    localStorage.setItem(SWEEP_KEY, String(Date.now()))
+  } catch { /* try again next launch */ }
 }
 
 boot()

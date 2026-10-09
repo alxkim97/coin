@@ -3,7 +3,7 @@
 // pagination, plus a desktop-sized calendar. Search lives in the top bar.
 import { formatMoney, rangeWindow, rangeLabel, dateHeaderLabel, formatDateDMY, localISO, escapeHtml, toast, toastWithAction, sortByDateDesc, confirmDialog } from '../helpers.js'
 import { deleteTransaction } from '../supabase.js'
-import { record, undo, undoLabel, deletedAction } from './undo.js'
+import { record, undo, isTopUndo, deletedAction } from './undo.js'
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '../categories.js'
 import { icon, categoryIcon } from '../icons.js'
 import { headHtml, paginate, paginationHtml, wirePagination, segHtml, wireSeg, catBadge } from './ui.js'
@@ -111,9 +111,9 @@ async function deleteTxn(txn, txns, redraw) {
   record(action)
   toastWithAction('Transaction deleted — Ctrl+Z to undo', 'Undo', async () => {
     try {
-      if (undoLabel() !== action.label) { toast('Use Ctrl+Z — other changes came after this one'); return }
+      if (!isTopUndo(action)) { toast('Use Ctrl+Z — other changes came after this one'); return }
       await undo()
-      txns.splice(idx, 0, txn) // shown right away; the next refresh brings its new id
+      txns.splice(idx, 0, action.restored || txn) // the re-added row, with its new id, so editing it right away works
       redraw()
     } catch (e) {
       toast(e.message || 'Failed to restore')
