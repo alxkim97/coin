@@ -14,6 +14,7 @@ import { openNetWorthCheckins } from './netWorthCheckins.js'
 import { toast, cacheData, getCachedData, todayISO, advanceDate, sortByDateDesc, formatMoney } from './helpers.js'
 import { categoryBudgetType } from './categories.js'
 import { applyTheme, setMode } from './theme.js'
+import { initUpdateReload } from './swUpdate.js'
 import { isDesktopView, onDesktopViewChange } from './platform.js'
 import { netWorthTimeline } from './analysisData.js'
 import { isPrivacyMode, setPrivacyMode, privacyToggleHtml, syncPrivacyButton, privacyOverlayHtml } from './privacy.js'
@@ -597,6 +598,11 @@ function renderImmediate() {
     }
   }
 }
+
+// a new deploy reloads the app as soon as its service worker takes over —
+// held back while the Add/edit form is open, so a half-typed transaction is
+// never lost (it reloads when you next switch away instead; see swUpdate.js)
+initUpdateReload({ isBusy: () => state.view === 'add' })
 
 async function boot() {
   state.session = await getSession()
