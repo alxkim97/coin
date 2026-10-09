@@ -15,6 +15,7 @@ import { toast, cacheData, getCachedData, clearCachedData, todayISO, advanceDate
 import { categoryBudgetType } from './categories.js'
 import { applyTheme, setMode } from './theme.js'
 import { initUpdateReload } from './swUpdate.js'
+import { initReceiptBadges } from './receiptViewer.js'
 import { isDesktopView, onDesktopViewChange } from './platform.js'
 import { setupPullToRefresh } from './pullToRefresh.js'
 import { netWorthTimeline } from './analysisData.js'
@@ -31,6 +32,7 @@ import { renderTaxDesktop } from './desktop/tax.js'
 import { record as recordUndo, clearUndo, undo, redo, undoLabel, redoLabel, addedAction, editedAction, deletedAction } from './desktop/undo.js'
 
 applyTheme()
+initReceiptBadges()
 
 // AI Q&A is built (see views/ask.js, api/ask.js) but needs an OPENAI_API_KEY
 // set in Vercel before it can answer anything — hidden from the tab bar

@@ -2,6 +2,7 @@ import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, categoryBudgetType } from '../ca
 import { addTransaction, updateTransaction, deleteTransaction, addRecurring, uploadReceipt, getReceiptUrl, deleteReceipt } from '../supabase.js'
 import { todayISO, toast, confirmDialog, formatMoney, escapeHtml, advanceDate, dmyDateFieldHtml, wireDmyDateField, sortByDateDesc } from '../helpers.js'
 import { isDesktopView } from '../platform.js'
+import { openReceiptViewer } from '../receiptViewer.js'
 import { recurScheduleHtml, wireRecurSchedule } from '../recurringScheduleFields.js'
 import { openRecurringList } from '../recurringListDialog.js'
 import { icon, categoryIcon } from '../icons.js'
@@ -138,7 +139,7 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
       <label>Receipt (optional)</label>
       ${(receiptFile || (receiptPath && !removeReceipt)) ? `
         <div class="receipt-preview">
-          <img id="receiptPreview" src="${receiptPreviewUrl || ''}" alt="Receipt" />
+          <img id="receiptPreview" src="${receiptPreviewUrl || ''}" alt="Receipt — click to enlarge" title="Click to enlarge" />
           <button type="button" class="link-btn" id="removeReceiptBtn">Remove</button>
         </div>
       ` : `
@@ -338,6 +339,7 @@ export function renderQuickAdd(container, { onSaved, editingTxn, recurring, txns
       removeReceipt = false
       draw()
     })
+    container.querySelector('#receiptPreview')?.addEventListener('click', () => { if (receiptPreviewUrl) openReceiptViewer({ url: receiptPreviewUrl }) })
     container.querySelector('#removeReceiptBtn')?.addEventListener('click', () => {
       if (receiptFile) {
         URL.revokeObjectURL(receiptPreviewUrl)

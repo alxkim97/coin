@@ -26,7 +26,7 @@ function rowHtml(t, { showDate, showTags }) {
   const flags = [
     t.is_credit_card ? `<span class="d-flag" title="Paid by credit card">${icon('creditCard', 12)}</span>` : '',
     t.is_shopee ? `<span class="d-flag" title="Bought on Shopee">${icon('bag', 12)}</span>` : '',
-    t.receipt_path ? `<span class="d-flag" title="Has a receipt photo">${icon('paperclip', 12)}</span>` : '',
+    t.receipt_path ? `<span class="d-flag receipt-open" data-receipt="${escapeHtml(t.receipt_path)}" title="View receipt" role="button" aria-label="View receipt">${icon('paperclip', 12)}</span>` : '',
   ].join('')
   // vendor and note share one column: vendor on top, note underneath in
   // grey — or the note alone when no vendor was typed

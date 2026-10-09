@@ -20,7 +20,7 @@ function txnRowHtml(t) {
         <div class="txn-row" data-id="${t.id}">
           <div class="txn-icon">${categoryIcon(t.category)}</div>
           <div class="txn-main">
-            <div class="txn-cat">${escapeHtml(t.category)}${t.is_credit_card ? ` <span class="txn-cc" title="Paid via credit card">${icon('creditCard', 13)}</span>` : ''}${t.is_shopee ? ` <span class="txn-cc" title="Bought via Shopee">${icon('bag', 13)}</span>` : ''}${t.receipt_path ? ` <span class="txn-cc" title="Has a receipt photo">${icon('paperclip', 13)}</span>` : ''}</div>
+            <div class="txn-cat">${escapeHtml(t.category)}${t.is_credit_card ? ` <span class="txn-cc" title="Paid via credit card">${icon('creditCard', 13)}</span>` : ''}${t.is_shopee ? ` <span class="txn-cc" title="Bought via Shopee">${icon('bag', 13)}</span>` : ''}${t.receipt_path ? ` <span class="txn-cc receipt-open" data-receipt="${escapeHtml(t.receipt_path)}" title="View receipt" role="button" aria-label="View receipt">${icon('paperclip', 13)}</span>` : ''}</div>
             ${t.subcategory ? `<div class="txn-sub">${escapeHtml(t.subcategory)}</div>` : ''}
             ${t.tags?.length ? `<div class="txn-tags">${t.tags.map(tag => `<span class="txn-tag">${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
           </div>
