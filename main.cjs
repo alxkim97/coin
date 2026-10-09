@@ -3,8 +3,12 @@ const path = require('path')
 const { autoUpdater } = require('electron-updater')
 
 // Without this, Windows can cache the taskbar/Start icon against the shared
-// dev electron.exe binary instead of this app's own icon.
-app.setAppUserModelId('com.alexkim.coin')
+// dev electron.exe binary instead of this app's own icon. Unpackaged runs
+// (npm run electron / electron:dev) get their own ID: sharing the installed
+// app's ID made Windows draw the taskbar button from the installed app's
+// Start-menu shortcut, so a dev build showed whatever icon that older
+// install had baked in rather than assets/icon.ico.
+app.setAppUserModelId(app.isPackaged ? 'com.alexkim.coin' : 'com.alexkim.coin.dev')
 
 // Prevent duplicate windows from "Start with Windows" plus a manual launch.
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
