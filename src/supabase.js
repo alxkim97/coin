@@ -274,3 +274,83 @@ export async function bulkRestoreNetWorth(checkins) {
     }
   }
 }
+
+/* ── Projection events (desktop Projection page) ── */
+
+// One-off or repeating money events you add yourself (a bonus, a renovation,
+// a new rent income) layered on top of the run-rate projection.
+// kind: 'income' | 'expense'; frequency: 'once' | 'monthly' | 'yearly';
+// start_month / end_month are the 1st of a month (end_month null = open-ended).
+export async function fetchProjectionEvents() {
+  const { data, error } = await supa.from('coin_projection_events').select('*').order('start_month', { ascending: true })
+  if (error) throw error
+  return data
+}
+
+export async function addProjectionEvent(ev) {
+  const { data, error } = await supa.from('coin_projection_events').insert(ev).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function updateProjectionEvent(id, patch) {
+  const { data, error } = await supa.from('coin_projection_events').update(patch).eq('id', id).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteProjectionEvent(id) {
+  const { error } = await supa.from('coin_projection_events').delete().eq('id', id)
+  if (error) throw error
+}
+
+/* ── Net worth accounts (Analysis → edit/delete an account) ── */
+
+// An "account" is just every coin_networth_items row sharing a name, across
+// all check-ins — so renaming/re-typing or deleting one touches all of them.
+// Matching is case-insensitive, same as latestAccountValues' grouping.
+async function accountItemRows(name) {
+  const key = name.trim().toLowerCase()
+  const { data, error } = await supa.from('coin_networth_items').select('id, name, checkin_id').ilike('name', name.trim())
+  if (error) throw error
+  return data.filter(r => r.name.trim().toLowerCase() === key) // ilike treats _ and % as wildcards — keep exact matches only
+}
+
+// Keeps each check-in row's cash/invested rollup in step with its items. A
+// check-in left with no items at all is deleted: netWorthTimeline falls back
+// to the rollup columns for item-less (legacy) check-ins, so leaving it would
+// keep counting the account that was just removed.
+async function resyncCheckins(checkinIds) {
+  for (const id of new Set(checkinIds)) {
+    const { data: items, error } = await supa.from('coin_networth_items').select('category, value').eq('checkin_id', id)
+    if (error) throw error
+    if (!items.length) {
+      const { error: delErr } = await supa.from('coin_networth').delete().eq('id', id)
+      if (delErr) throw delErr
+      continue
+    }
+    const cash = items.filter(i => i.category === 'cash').reduce((s, i) => s + Number(i.value), 0)
+    const invested = items.filter(i => i.category === 'invested').reduce((s, i) => s + Number(i.value), 0)
+    const { error: upErr } = await supa.from('coin_networth').update({ cash, invested }).eq('id', id)
+    if (upErr) throw upErr
+  }
+}
+
+export async function renameNetWorthAccount(oldName, { name, category }) {
+  const rows = await accountItemRows(oldName)
+  if (!rows.length) return
+  const patch = {}
+  if (name) patch.name = name.trim()
+  if (category) patch.category = category
+  const { error } = await supa.from('coin_networth_items').update(patch).in('id', rows.map(r => r.id))
+  if (error) throw error
+  if (category) await resyncCheckins(rows.map(r => r.checkin_id))
+}
+
+export async function deleteNetWorthAccount(name) {
+  const rows = await accountItemRows(name)
+  if (!rows.length) return
+  const { error } = await supa.from('coin_networth_items').delete().in('id', rows.map(r => r.id))
+  if (error) throw error
+  await resyncCheckins(rows.map(r => r.checkin_id))
+}

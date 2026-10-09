@@ -1,5 +1,6 @@
 import './style.css'
-import { getSession, onAuthChange, fetchTransactions, fetchBudgets, fetchRecurring, addTransaction, updateRecurring, fetchNetWorth, fetchSuggestions, fetchGoals } from './supabase.js'
+import './desktop.css'
+import { getSession, onAuthChange, fetchTransactions, fetchBudgets, fetchRecurring, addTransaction, updateRecurring, fetchNetWorth, fetchSuggestions, fetchGoals, fetchProjectionEvents } from './supabase.js'
 import { renderAuth } from './views/auth.js'
 import { renderQuickAdd } from './views/quickAdd.js'
 import { renderTransactions } from './views/transactions.js'
@@ -12,10 +13,19 @@ import { icon } from './icons.js'
 import { openNetWorthCheckins } from './netWorthCheckins.js'
 import { toast, cacheData, getCachedData, todayISO, advanceDate, sortByDateDesc, formatMoney } from './helpers.js'
 import { categoryBudgetType } from './categories.js'
-import { applyTheme } from './theme.js'
+import { applyTheme, setMode } from './theme.js'
 import { isDesktopView, onDesktopViewChange } from './platform.js'
-import { monthlyRollup, netWorthTimeline } from './analysisData.js'
+import { netWorthTimeline } from './analysisData.js'
 import { isPrivacyMode, setPrivacyMode, privacyToggleHtml, syncPrivacyButton, privacyOverlayHtml } from './privacy.js'
+import { effectiveDate, monthRange } from './helpers.js'
+import { renderTopbar } from './desktop/topbar.js'
+import { renderDashboardDesktop } from './desktop/dashboard.js'
+import { renderHistoryDesktop, setHistorySearch, getHistorySearch, applyHistorySearch } from './desktop/history.js'
+import { renderBudgetDesktop } from './desktop/budget.js'
+import { renderAnalysisDesktop } from './desktop/analysis.js'
+import { renderSettingsDesktop } from './desktop/settings.js'
+import { renderProjectionDesktop } from './desktop/projection.js'
+import { renderTaxDesktop } from './desktop/tax.js'
 
 applyTheme()
 
@@ -54,12 +64,20 @@ const state = {
   networth: [],
   suggestions: [],
   goals: [],
+  projectionEvents: [],
   year: now.getFullYear(),
   month: now.getMonth(),
   range: 1,
   editingTxn: null,
   loading: true,
+  // desktop-only: dashboard Customize mode (drag/hide widgets)
+  customizing: false,
 }
+
+// Desktop-only destinations — the phone tab bar has no slot for them, so a
+// window shrunk below the breakpoint while on one falls back to Dashboard.
+const DESKTOP_ONLY_VIEWS = new Set(['projection', 'tax'])
+let refocusSearch = false
 
 async function loadData() {
   try {
@@ -101,6 +119,14 @@ async function loadGoals() {
     state.goals = await fetchGoals()
   } catch {
     state.goals = [] // table may not exist yet on an older install — best-effort, not fatal
+  }
+}
+
+async function loadProjectionEvents() {
+  try {
+    state.projectionEvents = await fetchProjectionEvents()
+  } catch {
+    state.projectionEvents = [] // coin_projection_events not created yet — Projection still works from the run-rate alone
   }
 }
 
@@ -248,12 +274,16 @@ function renderImmediate() {
     return
   }
 
+  const desktop = isDesktopView()
+  if (!desktop && DESKTOP_ONLY_VIEWS.has(state.view)) state.view = 'dashboard'
+  app.classList.toggle('desk', desktop)
+
   const screen = document.createElement('div')
-  screen.className = 'screen'
+  screen.className = 'screen view-' + state.view
   app.appendChild(screen)
 
   if (state.view === 'dashboard') {
-    renderDashboard(screen, {
+    ;(desktop ? renderDashboardDesktop : renderDashboard)(screen, {
       txns: state.txns,
       budgets: state.budgets,
       year: state.year,
@@ -269,18 +299,26 @@ function renderImmediate() {
       onSuggestionsChanged: async () => { await loadData(); render() },
       goals: state.goals,
       onGoalsChanged: async () => { await loadGoals(); render(); return state.goals },
+      customizing: state.customizing,
+      onDoneCustomizing: () => { state.customizing = false; render() },
+      onNavigate: (view) => setView(view),
+      onEditTxn: (txn) => setView('add', { editingTxn: txn }),
     })
   } else if (state.view === 'transactions') {
-    renderTransactions(screen, {
+    ;(desktop ? renderHistoryDesktop : renderTransactions)(screen, {
       txns: state.txns,
       budgets: state.budgets,
       year: state.year,
       month: state.month,
+      range: state.range,
       onMonthChange: setMonth,
       onEditTxn: (txn) => setView('add', { editingTxn: txn }),
     })
   } else if (state.view === 'add') {
-    renderQuickAdd(screen, {
+    // desktop frames Coin's own Add form in a single Ledger card
+    const host = desktop ? document.createElement('div') : screen
+    if (desktop) { host.className = 'd-add-frame'; screen.appendChild(host) }
+    renderQuickAdd(host, {
       editingTxn: state.editingTxn,
       recurring: state.recurring,
       txns: state.txns,
@@ -288,20 +326,23 @@ function renderImmediate() {
       onRecurringChanged: async () => { state.recurring = await fetchRecurring(); render(); return state.recurring },
     })
   } else if (state.view === 'analysis') {
-    renderAnalysis(screen, {
+    ;(desktop ? renderAnalysisDesktop : renderAnalysis)(screen, {
       txns: state.txns,
       budgets: state.budgets,
       recurring: state.recurring,
       networth: state.networth,
+      onNetWorthChanged: async () => { await loadNetWorth(); render(); return state.networth },
     })
   } else if (state.view === 'budget') {
-    renderBudget(screen, {
+    ;(desktop ? renderBudgetDesktop : renderBudget)(screen, {
       budgets: state.budgets,
       txns: state.txns,
+      year: state.year,
+      month: state.month,
       onBudgetsChanged: async () => { state.budgets = await fetchBudgets(); render() },
     })
   } else if (state.view === 'settings') {
-    renderSettings(screen, {
+    ;(desktop ? renderSettingsDesktop : renderSettings)(screen, {
       budgets: state.budgets,
       txns: state.txns,
       recurring: state.recurring,
@@ -313,7 +354,17 @@ function renderImmediate() {
       // backup restore can touch all five tables at once — one combined
       // refresh instead of chaining the single-table callbacks above
       onDataRestored: async () => { await loadData(); await loadNetWorth(); await loadGoals(); render() },
+      onThemeChanged: () => render(),
     })
+  } else if (state.view === 'projection') {
+    renderProjectionDesktop(screen, {
+      txns: state.txns,
+      networth: state.networth,
+      events: state.projectionEvents,
+      onEventsChanged: async () => { await loadProjectionEvents(); render() },
+    })
+  } else if (state.view === 'tax') {
+    renderTaxDesktop(screen, { txns: state.txns })
   } else if (state.view === 'ask') {
     renderAsk(screen, {
       txns: state.txns,
@@ -325,49 +376,53 @@ function renderImmediate() {
 
   const tabbar = document.createElement('div')
   tabbar.className = 'tabbar'
+  const tab = (view, ic, label, extraClass = '') => `
+    <button class="tab ${extraClass} ${state.view === view ? 'active' : ''}" data-view="${view}">
+      ${icon(ic, 20)}<span>${label}</span>
+    </button>`
+  // the nav wrapper is display:contents on phone, so the bottom tab bar's
+  // flex row is exactly what it was before; desktop gives it a real box
   tabbar.innerHTML = `
     <div class="tabbar-brand">
       <img src="./favicon.svg" alt="" class="tabbar-brand-logo" />
-      <span class="tabbar-brand-name">Coin</span>
+      <div><span class="tabbar-brand-name">Coin</span>${desktop ? `<span class="tabbar-brand-sub">v${__APP_VERSION__} · Alex Kim</span>` : ''}</div>
     </div>
-    <div class="nav-label">Overview</div>
-    <button class="tab ${state.view === 'dashboard' ? 'active' : ''}" data-view="dashboard">
-      ${icon('dashboard', 20)}<span>Home</span>
-    </button>
-    <button class="tab ${state.view === 'transactions' ? 'active' : ''}" data-view="transactions">
-      ${icon('history', 20)}<span>History</span>
-    </button>
-    <button class="tab ${state.view === 'add' ? 'active' : ''}" data-view="add">
-      ${icon('add', 20)}<span>Add</span>
-    </button>
-    <div class="nav-label">Planning</div>
-    <button class="tab ${state.view === 'budget' ? 'active' : ''}" data-view="budget">
-      ${icon('budget', 20)}<span>Budget</span>
-    </button>
-    <div class="nav-label">Analysis</div>
-    <button class="tab ${state.view === 'analysis' ? 'active' : ''}" data-view="analysis">
-      ${icon('analysis', 20)}<span>Analysis</span>
-    </button>
-    ${ASK_ENABLED ? `
-    <button class="tab ${state.view === 'ask' ? 'active' : ''}" data-view="ask">
-      ${icon('chat', 20)}<span>Ask</span>
-    </button>
-    ` : ''}
-    <div class="nav-label">System</div>
-    <button class="tab ${state.view === 'settings' ? 'active' : ''}" data-view="settings">
-      ${icon('settings', 20)}<span>Settings</span>
-    </button>
+    <div class="tabbar-nav"${desktop ? '' : ' style="display:contents"'}>
+      <div class="nav-label">Overview</div>
+      ${tab('dashboard', 'dashboard', desktop ? 'Dashboard' : 'Home')}
+      ${tab('transactions', 'history', 'History')}
+      ${tab('add', 'add', 'Add')}
+      <div class="nav-label">Planning</div>
+      ${tab('budget', 'budget', desktop ? 'Budget &amp; Limits' : 'Budget')}
+      ${tab('projection', 'activity', 'Projection', 'tab-desktop-only')}
+      ${tab('tax', 'fileText', 'Tax Calculator', 'tab-desktop-only')}
+      <div class="nav-label">Analysis</div>
+      ${tab('analysis', 'analysis', 'Analysis')}
+      ${ASK_ENABLED ? tab('ask', 'chat', 'Ask') : ''}
+      <div class="nav-label">System</div>
+      ${tab('settings', 'settings', 'Settings')}
+    </div>
   `
   tabbar.querySelectorAll('.tab').forEach(btn => {
-    btn.onclick = () => setView(btn.dataset.view)
+    btn.onclick = () => { state.customizing = false; setView(btn.dataset.view) }
   })
 
   // Desktop-sidebar-only footer panel (Ledger-inspired): a mini this-month
   // summary + net worth snapshot, built only when the sidebar is actually
   // showing — same JS-level device fork already used for Analysis's
   // investment section, so mobile renders never pay for this computation.
-  if (isDesktopView()) {
-    const thisMonth = monthlyRollup(state.txns, 1)[0]
+  if (desktop) {
+    // same salary-shift rule (effectiveDate) as the Dashboard KPI cards, so
+    // the sidebar and the dashboard never disagree about "this month"
+    const today = new Date()
+    const { from, to } = monthRange(today.getFullYear(), today.getMonth())
+    let mIncome = 0, mExpense = 0
+    for (const t of state.txns) {
+      const d = effectiveDate(t)
+      if (d < from || d > to) continue
+      if (t.type === 'income') mIncome += Number(t.amount)
+      else mExpense += Number(t.amount)
+    }
     const nwTimeline = netWorthTimeline(state.networth)
     const latestNw = nwTimeline[nwTimeline.length - 1]
     const privacyOn = isPrivacyMode()
@@ -376,15 +431,15 @@ function renderImmediate() {
     sidebarFooter.className = 'sidebar-footer'
     sidebarFooter.innerHTML = `
       <div class="sidebar-month-summary">
-        <div class="sms-label">This Month</div>
-        <div class="sms-row"><span class="sms-key">Income</span><span class="sms-val pos">${formatMoney(thisMonth?.income || 0)}</span></div>
-        <div class="sms-row"><span class="sms-key">Expenses</span><span class="sms-val neg">${formatMoney(thisMonth?.expense || 0)}</span></div>
+        <div class="sms-label">THIS MONTH</div>
+        <div class="sms-row"><span class="sms-key">Income</span><span class="sms-val pos">${formatMoney(mIncome)}</span></div>
+        <div class="sms-row"><span class="sms-key">Expenses</span><span class="sms-val neg">${formatMoney(mExpense)}</span></div>
         <div class="sms-divider"></div>
-        <div class="sms-row"><span class="sms-key">Net</span><span class="sms-val">${formatMoney((thisMonth?.income || 0) - (thisMonth?.expense || 0))}</span></div>
+        <div class="sms-row"><span class="sms-key">Net</span><span class="sms-val ${mIncome - mExpense >= 0 ? 'pos' : 'neg'}">${formatMoney(mIncome - mExpense)}</span></div>
       </div>
       <div class="sidebar-nw-panel">
         <div class="sms-row" style="margin-bottom:0">
-          <span class="sms-label" style="margin-bottom:0">Net Worth</span>
+          <span class="sms-label" style="margin-bottom:0">NET WORTH</span>
           ${privacyToggleHtml('sidebarPrivacyToggle')}
         </div>
         <div class="privacy-wrap${privacyOn ? ' active' : ''}">
@@ -393,12 +448,9 @@ function renderImmediate() {
         </div>
       </div>
     `
-    sidebarFooter.querySelector('#sidebarPrivacyToggle').onclick = (e) => {
+    sidebarFooter.querySelector('#sidebarPrivacyToggle').onclick = () => {
       setPrivacyMode(!isPrivacyMode())
-      const on = isPrivacyMode()
-      const btn = e.currentTarget
-      sidebarFooter.querySelector('.sidebar-nw-panel .privacy-wrap').classList.toggle('active', on)
-      syncPrivacyButton(btn, on)
+      render()
     }
     tabbar.appendChild(sidebarFooter)
   }
@@ -417,6 +469,39 @@ function renderImmediate() {
   }
 
   app.appendChild(tabbar)
+
+  if (desktop) {
+    const topbar = document.createElement('header')
+    topbar.className = 'desk-topbar'
+    app.appendChild(topbar)
+    renderTopbar(topbar, {
+      view: state.view,
+      year: state.year,
+      month: state.month,
+      range: state.range,
+      txns: state.txns,
+      searchQuery: getHistorySearch(),
+      customizing: state.customizing,
+      onMonthChange: setMonth,
+      onRangeChange: setRange,
+      onToggleCustomize: () => { state.customizing = !state.customizing; render() },
+      onTogglePrivacy: () => { setPrivacyMode(!isPrivacyMode()); render() },
+      onToggleTheme: (isDark) => { setMode(isDark ? 'light' : 'dark'); render() },
+      onAdd: () => { state.customizing = false; setView('add') },
+      onSearch: (q) => {
+        setHistorySearch(q)
+        if (state.view === 'transactions') { applyHistorySearch(); return }
+        refocusSearch = true
+        setView('transactions')
+      },
+    })
+    if (refocusSearch) {
+      refocusSearch = false
+      const input = topbar.querySelector('#deskSearch')
+      input.focus()
+      input.setSelectionRange(input.value.length, input.value.length)
+    }
+  }
 }
 
 async function boot() {
@@ -430,6 +515,7 @@ async function boot() {
       await processRecurring()
       await loadNetWorth()
       await loadGoals()
+      await loadProjectionEvents()
     } catch (e) {
       toast(e.message || 'Failed to load data')
     }
