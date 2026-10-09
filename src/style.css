@@ -675,7 +675,7 @@ label:first-child { margin-top: 0; }
   border-radius: 10px;
   font-size: 13.5px;
   font-weight: 600;
-  z-index: 100;
+  z-index: 300; /* above popups (200) and confirms (210) */
   opacity: 0;
   pointer-events: none;
   transition: opacity .2s;
@@ -724,6 +724,8 @@ label:first-child { margin-top: 0; }
   z-index: 200;
   animation: overlayFadeIn .15s ease;
 }
+/* "Are you sure?" boxes open from inside other popups — always on top */
+.confirm-overlay.confirm-top { z-index: 210; }
 .confirm-box {
   background: var(--surface);
   border: none;
@@ -1041,6 +1043,17 @@ label:first-child { margin-top: 0; }
 }
 .nw-item-row .nwItemRemove:hover:not(:disabled) { color: var(--red); }
 .nw-item-row .nwItemRemove:disabled { opacity: 0.3; cursor: default; }
+/* phone: four controls on one line clipped the type ("Investe…", "Insurar…")
+   at 16px — line 1 is name + remove, line 2 splits type and amount evenly */
+@media (max-width: 859px) {
+  .nw-item-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px 8px; margin-bottom: 14px; }
+  .nw-item-row .nwItemName { grid-column: 1 / -1; padding-right: 44px; }
+  /* sits inside the right end of the name field, outside the grid, so it
+     doesn't take width from the type dropdown below */
+  .nw-item-row .nwItemRemove { position: absolute; top: 0; right: 4px; height: 46px; width: 36px; display: flex; align-items: center; justify-content: center; }
+  .nw-item-row .nwItemCategory { width: auto; padding-left: 12px; padding-right: 8px; }
+  .nw-item-row .nwItemValue { width: auto; }
+}
 .nw-item-group-label {
   font-size: 10.5px; font-weight: 700; color: var(--text3);
   text-transform: uppercase; letter-spacing: .03em; margin: 12px 0 6px;
@@ -1055,7 +1068,7 @@ label:first-child { margin-top: 0; }
 }
 .privacy-toggle-btn:hover { color: var(--text); background: var(--accent-weak); }
 .privacy-wrap { position: relative; }
-.privacy-wrap.active .card { filter: blur(10px); user-select: none; pointer-events: none; }
+.privacy-wrap.active .card, .privacy-wrap.active .nwq-rows { filter: blur(10px); user-select: none; pointer-events: none; }
 .privacy-overlay {
   position: absolute; inset: 0; display: none; align-items: center; justify-content: center; gap: 6px;
   font-size: 13px; font-weight: 600; color: var(--text2);

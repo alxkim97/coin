@@ -36,7 +36,7 @@ export function openNetWorthCheckins({ networth, onNetWorthChanged }) {
 
         ${form ? formHtml(form) : ''}
 
-        <div class="privacy-wrap${privacyOn ? ' active' : ''}">
+        <div class="privacy-wrap${privacyOn && data.length ? ' active' : ''}">
           <div class="nwq-rows">
             ${data.length === 0 ? '<div class="empty-state">No check-ins yet — log your account balances periodically to see a trend in Analysis.</div>' : sortByDateDesc(data).map(n => `
               <div class="networth-row" data-id="${n.id}">
@@ -49,9 +49,9 @@ export function openNetWorthCheckins({ networth, onNetWorthChanged }) {
               </div>
             `).join('')}
           </div>
-          ${!form ? '<button class="btn secondary" id="nwcAddBtn" style="margin-top:12px">Add check-in</button>' : ''}
-          ${privacyOverlayHtml()}
+          ${data.length ? privacyOverlayHtml() : '' /* nothing to hide — the cover sat on top of the empty-state text */}
         </div>
+        ${!form ? '<button class="btn secondary" id="nwcAddBtn" style="margin-top:12px">Add check-in</button>' : '' /* outside the wrap so hiding balances doesn't cover it */}
       </div>
     `
     wire()

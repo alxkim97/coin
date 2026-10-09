@@ -208,7 +208,9 @@ function getToastEl() {
   if (!el) {
     el = document.createElement('div')
     el.className = 'toast'
-    document.getElementById('app').appendChild(el)
+    // body, not #app: popups live on body, and a toast inside #app painted
+    // underneath their backdrop
+    document.body.appendChild(el)
   }
   return el
 }
@@ -256,7 +258,9 @@ export function toastWithAction(msg, actionLabel, onAction) {
 export function confirmDialog(message, confirmLabel = 'Confirm', danger = false) {
   return new Promise(resolve => {
     const overlay = document.createElement('div')
-    overlay.className = 'confirm-overlay'
+    // confirm-top + body: it's usually raised from inside another popup (also
+    // on body, same z-index), and appending it to #app put it underneath
+    overlay.className = 'confirm-overlay confirm-top'
     overlay.innerHTML = `
       <div class="confirm-box">
         <p>${escapeHtml(message)}</p>
@@ -266,7 +270,7 @@ export function confirmDialog(message, confirmLabel = 'Confirm', danger = false)
         </div>
       </div>
     `
-    document.getElementById('app').appendChild(overlay)
+    document.body.appendChild(overlay)
     const close = (result) => { overlay.remove(); resolve(result) }
     overlay.querySelector('#confirmNo').onclick = () => close(false)
     overlay.querySelector('#confirmYes').onclick = () => close(true)
