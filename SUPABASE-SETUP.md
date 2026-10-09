@@ -315,7 +315,7 @@ Desktop Projection page: your own one-off or repeating money events (a renovatio
 
 ## Claude access — suggest, time-boxed editing, activity log (2026-10-10)
 
-Run this once — new tables/functions plus extra policies; nothing existing is changed or removed:
+Paste only this block (not the sections above it). Safe to run more than once — new tables/functions plus extra policies; nothing existing is changed or removed:
 
 ```sql
 -- Who may act on whose data. Claude gets its OWN Coin account (never your
@@ -331,8 +331,10 @@ create table if not exists coin_delegates (
   primary key (owner_id, delegate_id)
 );
 alter table coin_delegates enable row level security;
+drop policy if exists "owner manages" on coin_delegates;
 create policy "owner manages" on coin_delegates for all
   using (auth.uid() = owner_id) with check (auth.uid() = owner_id);
+drop policy if exists "delegate reads own grant" on coin_delegates;
 create policy "delegate reads own grant" on coin_delegates for select
   using (auth.uid() = delegate_id);
 
@@ -368,9 +370,13 @@ revoke all on function coin_add_delegate(text) from public, anon;
 grant execute on function coin_add_delegate(text) to authenticated;
 
 -- Transactions: read while suggesting or editing; write only inside the window.
+drop policy if exists "delegate read" on coin_transactions;
 create policy "delegate read" on coin_transactions for select using (coin_can_read(user_id));
+drop policy if exists "delegate insert" on coin_transactions;
 create policy "delegate insert" on coin_transactions for insert with check (coin_can_edit(user_id));
+drop policy if exists "delegate update" on coin_transactions;
 create policy "delegate update" on coin_transactions for update using (coin_can_edit(user_id)) with check (coin_can_edit(user_id));
+drop policy if exists "delegate delete" on coin_transactions;
 create policy "delegate delete" on coin_transactions for delete using (coin_can_edit(user_id));
 
 -- Suggestions can now propose edits and deletes, not just new entries.
@@ -378,6 +384,7 @@ alter table coin_suggestions add column if not exists action text not null defau
   check (action in ('add', 'edit', 'delete'));
 alter table coin_suggestions add column if not exists target_id uuid references coin_transactions(id) on delete cascade;
 alter table coin_suggestions add column if not exists tags text[];
+drop policy if exists "delegate suggests" on coin_suggestions;
 create policy "delegate suggests" on coin_suggestions for all
   using (coin_can_suggest(user_id)) with check (coin_can_suggest(user_id));
 
@@ -395,7 +402,9 @@ create table if not exists coin_delegate_log (
   created_at timestamptz not null default now()
 );
 alter table coin_delegate_log enable row level security;
+drop policy if exists "owner reads" on coin_delegate_log;
 create policy "owner reads" on coin_delegate_log for select using (auth.uid() = owner_id);
+drop policy if exists "owner marks undone" on coin_delegate_log;
 create policy "owner marks undone" on coin_delegate_log for update
   using (auth.uid() = owner_id) with check (auth.uid() = owner_id);
 
