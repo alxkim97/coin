@@ -47,7 +47,8 @@ export function suggestionRowsHtml(suggestions, txns, iconSize = 18, btnIconSize
   return suggestions.map(s => {
     const action = s.action || 'add'
     const target = s.target_id ? byId.get(s.target_id) : null
-    const shown = action === 'delete' && target ? target : s
+    // edit/delete cards show the entry as it is now; the change line below says what would differ
+    const shown = action !== 'add' && target ? target : s
     const badge = action === 'edit' ? '<span class="suggestion-kind edit">Edit</span>' : action === 'delete' ? '<span class="suggestion-kind delete">Delete</span>' : ''
     return `
     <div class="suggestion-row">

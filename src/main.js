@@ -209,6 +209,25 @@ async function loadDelegates() {
   }
 }
 
+// Suggestions are posted from outside the app (Claude's helper account), so
+// pick them up when you come back to the window instead of needing a restart.
+// Re-renders only when something actually changed, and never on the Add form
+// (a rebuild there would wipe a half-typed entry).
+let suggestionsCheckedAt = 0
+async function refreshSuggestions() {
+  if (!state.session || state.loading || state.view === 'add' || Date.now() - suggestionsCheckedAt < 15000) return
+  suggestionsCheckedAt = Date.now()
+  try {
+    const next = await fetchSuggestions()
+    const key = list => list.map(s => s.id).join(',')
+    if (key(next) === key(state.suggestions)) return
+    state.suggestions = next
+    if (state.view === 'dashboard') render()
+  } catch { /* offline or table missing — try again next time */ }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refreshSuggestions() })
+window.addEventListener('focus', refreshSuggestions)
+
 async function loadProjectionEvents() {
   try {
     state.projectionEvents = await fetchProjectionEvents()
