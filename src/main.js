@@ -85,6 +85,7 @@ const state = {
   suggestions: [],
   goals: [],
   projectionEvents: [],
+  projectionEventsReady: true, // false until coin_projection_events exists
   year: now.getFullYear(),
   month: now.getMonth(),
   range: 1,
@@ -145,8 +146,10 @@ async function loadGoals() {
 async function loadProjectionEvents() {
   try {
     state.projectionEvents = await fetchProjectionEvents()
+    state.projectionEventsReady = true
   } catch {
     state.projectionEvents = [] // coin_projection_events not created yet — Projection still works from the run-rate alone
+    state.projectionEventsReady = false
   }
 }
 
@@ -387,6 +390,7 @@ function renderImmediate() {
       txns: state.txns,
       networth: state.networth,
       events: state.projectionEvents,
+      eventsReady: state.projectionEventsReady,
       onEventsChanged: async () => { await loadProjectionEvents(); render() },
     })
   } else if (state.view === 'tax') {

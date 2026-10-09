@@ -497,6 +497,32 @@
   .d-streak-val { font-family: var(--font-mono); font-size: 18px; font-weight: 500; line-height: 1.1; }
   .d-streak-lbl { font-size: 10.5px; color: var(--text3); }
 
+  /* ── Budget cards ── */
+  .d-budget-row { padding: 7px 0; border-bottom: 1px solid var(--border); }
+  .d-budget-row:last-child { border-bottom: none; padding-bottom: 0; }
+  .d-budget-row:first-child { padding-top: 0; }
+  .d-budget-name { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text2); min-width: 0; }
+  .d-budget-name .ico { color: var(--accent-ink); flex-shrink: 0; }
+  .d-budget-row.none { display: flex; justify-content: space-between; align-items: center; opacity: .6; }
+  .d-budget-row.editing { display: grid; grid-template-columns: minmax(0, 1fr) auto auto 110px; align-items: center; gap: 10px; }
+  .d-budget-row.editing input { padding: 5px 8px; font-size: 12px; text-align: right; }
+  .d-budget-row.editing .d-link { font-family: var(--font-mono); font-size: 11px; color: var(--gold); }
+
+  /* ── Tax calculator ── */
+  .d-tax { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+  .d-tax-inputs { display: flex; flex-direction: column; gap: 14px; }
+  .d-tax-result { position: sticky; top: 0; }
+  .d-tax-brackets { margin: 12px 0 6px; border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; }
+  .d-tax-brackets td, .d-tax-brackets th { padding: 6px 10px; font-size: 11.5px; }
+  .d-tax-brackets tr.on td { background: var(--accent-glow); }
+  .d-tax-brackets tr.off td { color: var(--text3); }
+
+  /* ── Projection events form row ── */
+  .d-ev-table input, .d-ev-table select { padding: 5px 8px; font-size: 12px; width: 100%; min-width: 84px; }
+  .d-ev-table input[type="number"] { text-align: right; }
+  .d-ev-table input:disabled { opacity: .4; }
+  tr.d-ev-form td { background: var(--accent-glow); padding: 7px 6px; }
+
   /* ── Equal squares: personal records + achievements ── */
   .d-squares { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 10px; }
   .d-squares.sm { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
@@ -705,7 +731,8 @@
 @media (min-width: 860px) and (max-width: 1180px) {
   .d-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .d-row, .d-row.r-21, .d-row.r-12, .d-row.r-3 { grid-template-columns: minmax(0, 1fr); }
-  .d-calc, .d-review, .qa-desk { grid-template-columns: minmax(0, 1fr); }
+  .d-calc, .d-review, .qa-desk, .d-tax { grid-template-columns: minmax(0, 1fr); }
+  .d-tax-result { position: static; }
   .d-settings { grid-template-columns: minmax(0, 1fr); }
   .d-fields.f-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .desk-search { max-width: 220px; }

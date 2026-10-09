@@ -61,21 +61,40 @@ export function sortByDateDesc(list) {
   return [...list].sort((a, b) => b.date.localeCompare(a.date) || (b.created_at || '').localeCompare(a.created_at || ''))
 }
 
-// Average monthly spend per expense category over the trailing N months —
-// replaces a one-time hardcoded snapshot with something that stays current
-// on its own as you keep logging.
-export function computeSuggestedLimits(txns, months = 3) {
-  const cutoff = new Date()
-  cutoff.setMonth(cutoff.getMonth() - months)
-  const cutoffStr = localISO(cutoff)
-  const sums = {}
+// Suggested monthly limit per expense category: the average of the last N
+// *complete* months that have any spending logged — empty (not-yet-logged)
+// months are skipped instead of counted as ฿0, which used to drag every
+// suggestion down — rounded to the nearest ฿100. Looks back up to 12 months
+// for N months with data. Returns the months used and each category's
+// per-month spend so the Budget page can show its working.
+export function suggestionBasis(txns, months = 3, now = new Date()) {
+  const key = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  const spend = {}
   for (const t of txns) {
-    if (t.type !== 'expense' || t.date < cutoffStr) continue
-    sums[t.category] = (sums[t.category] || 0) + Number(t.amount)
+    if (t.type !== 'expense') continue
+    const k = t.date.slice(0, 7)
+    if (!spend[k]) spend[k] = {}
+    spend[k][t.category] = (spend[k][t.category] || 0) + Number(t.amount)
   }
-  const result = {}
-  for (const cat in sums) result[cat] = Math.round((sums[cat] / months) * 100) / 100
-  return result
+  const used = []
+  for (let i = 1; i <= 12 && used.length < months; i++) {
+    const k = key(new Date(now.getFullYear(), now.getMonth() - i, 1))
+    if (spend[k]) used.push(k)
+  }
+  used.reverse()
+  const perCat = {}
+  for (const k of used) for (const cat in spend[k]) if (!perCat[cat]) perCat[cat] = {}
+  for (const cat in perCat) {
+    const byMonth = Object.fromEntries(used.map(k => [k, spend[k][cat] || 0]))
+    const avg = used.length ? Object.values(byMonth).reduce((s, v) => s + v, 0) / used.length : 0
+    perCat[cat] = { byMonth, avg, suggested: Math.round(avg / 100) * 100 }
+  }
+  return { months: used, perCat }
+}
+
+export function computeSuggestedLimits(txns, months = 3) {
+  const { perCat } = suggestionBasis(txns, months)
+  return Object.fromEntries(Object.entries(perCat).map(([cat, v]) => [cat, v.suggested]))
 }
 
 export function monthLabel(year, month) {

@@ -289,6 +289,30 @@ A daily Vercel Cron job (`api/check-budget-alerts.js`) checks everyone's current
 3. Put the same `VAPID_PUBLIC_KEY` value into `src/views/settings.js`'s subscribe flow (it's a public key, safe client-side, but still not hardcoded there yet as of this migration — see that file)
 4. Deploy — `vercel.json`'s `crons` entry picks it up automatically
 
+## Adding projection events (2026-10-09)
+
+Run this once — a new table, doesn't touch anything existing:
+
+```sql
+create table coin_projection_events (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  name text not null,
+  kind text not null check (kind in ('income', 'expense')),
+  amount numeric not null check (amount >= 0),
+  frequency text not null default 'once' check (frequency in ('once', 'monthly', 'yearly')),
+  start_month date not null, -- 1st of the month the event starts
+  end_month date,            -- optional last month for monthly/yearly events
+  notes text,
+  created_at timestamptz not null default now()
+);
+alter table coin_projection_events enable row level security;
+create policy "own rows" on coin_projection_events for all
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+```
+
+Desktop Projection page: your own one-off or repeating money events (a renovation, rent income starting, an annual bonus) layered on top of the run-rate projection. Without this table the page still works from the run-rate alone and shows a setup note instead of the events list.
+
 ## One-time data migration
 
 To bring over your existing 1,416 transactions from Ledger's `manual logs/ledger-import-all.json`, see `scripts/migrate.js` in this repo.
